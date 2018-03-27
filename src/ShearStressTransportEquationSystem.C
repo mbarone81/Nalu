@@ -54,7 +54,9 @@ ShearStressTransportEquationSystem::ShearStressTransportEquationSystem(
     fOneBlending_(NULL),
     maxLengthScale_(NULL),
     isInit_(true),
-    sstMaxLengthScaleAlgDriver_(NULL)
+    sstMaxLengthScaleAlgDriver_(NULL),
+    hybridBlending_(NULL),
+    fLNS_(NULL)
 {
   // push back EQ to manager
   realm_.push_equation_to_systems(this);
@@ -113,9 +115,19 @@ ShearStressTransportEquationSystem::register_nodal_fields(
     stk::mesh::put_field(*maxLengthScale_, *part);
   }
 
+  // Hybrid SST-Ksgs model
+  if ( HYB_SST_KSGS == realm_.solutionOptions_->turbulenceModel_ ) {
+    hybridBlending_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "sst_hybrid_blending"));
+    stk::mesh::put_field(*hybridBlending_, *part);
+    fLNS_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "hyb_lim_num_scales"));
+    stk::mesh::put_field(*fLNS_, *part);
+  }
+
   // add to restart field
   realm_.augment_restart_variable_list("minimum_distance_to_wall");
   realm_.augment_restart_variable_list("sst_f_one_blending");
+  if ( HYB_SST_KSGS == realm_.solutionOptions_->turbulenceModel_ )
+    realm_.augment_restart_variable_list("hybrid_blending");
 }
 
 
@@ -190,6 +202,10 @@ ShearStressTransportEquationSystem::solve_and_update()
 
   // compute blending for SST model
   compute_f_one_blending();
+
+  // compute hybrid blending function for hybrid SST-Ksgs model
+  if ( HYB_SST_KSGS == realm_.solutionOptions_->turbulenceModel_ ) 
+    compute_hybrid_blending();
 
   // SST effective viscosity for k and omega
   tkeEqSys_->compute_effective_diff_flux_coeff();
@@ -550,6 +566,63 @@ ShearStressTransportEquationSystem::compute_f_one_blending()
 
     }
   }
+}
+
+//--------------------------------------------------------------------------
+//-------- compute_hybrid_blending ------------------------------------------
+//--------------------------------------------------------------------------
+void
+ShearStressTransportEquationSystem::compute_hybrid_blending()
+{
+  stk::mesh::MetaData & meta_data = realm_.meta_data();
+
+  const int nDim = meta_data.spatial_dimension();
+
+  // model parameters
+  const double betaStar = realm_.get_turb_model_constant(TM_betaStar);
+
+  // required fields with state; min_distance is fine
+  ScalarFieldType &sdrNp1 = sdr_->field_of_state(stk::mesh::StateNP1);
+  ScalarFieldType &tkeNp1 = tke_->field_of_state(stk::mesh::StateNP1);
+
+  // fields not saved off
+  ScalarFieldType *density = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "density");
+  ScalarFieldType *viscosity = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "viscosity");
+
+  //select all nodes (locally and shared)
+  stk::mesh::Selector s_all_nodes
+    = (meta_data.locally_owned_part() | meta_data.globally_shared_part())
+    &stk::mesh::selectField(*fOneBlending_);
+
+  stk::mesh::BucketVector const& node_buckets =
+    realm_.get_buckets( stk::topology::NODE_RANK, s_all_nodes );
+  for ( stk::mesh::BucketVector::const_iterator ib = node_buckets.begin() ;
+        ib != node_buckets.end() ; ++ib ) {
+    stk::mesh::Bucket & b = **ib ;
+    const stk::mesh::Bucket::size_type length   = b.size();
+
+    // fields; supplemental and non-const fOne and ftwo
+    const double * sdr = stk::mesh::field_data(sdrNp1, b);
+    const double * tke = stk::mesh::field_data(tkeNp1, b);
+    const double * minD = stk::mesh::field_data(*minDistanceToWall_, b);
+    const double * rho = stk::mesh::field_data(*density, b);
+    const double * mu = stk::mesh::field_data(*viscosity, b);
+    double * fBlend = stk::mesh::field_data(*hybridBlending_, b);
+    double * fLNS = stk::mesh::field_data(*fLNS_, b);
+
+    for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
+
+      // some temps
+      const double minDSq = minD[k]*minD[k];
+      const double trbDiss = std::sqrt(tke[k])/betaStar/sdr[k]/minD[k];
+      const double lamDiss = 500.0*mu[k]/rho[k]/sdr[k]/minDSq;
+
+      // argument
+      const double fArg = std::max(trbDiss, lamDiss);
+
+      // blending function
+      fBlend[k] = std::max(std::tanh(fArg*fArg*fArg*fArg), fLNS[k]);
+
 }
 
 } // namespace nalu

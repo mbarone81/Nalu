@@ -26,6 +26,7 @@
 #include <DirichletBC.h>
 #include <EffectiveDiffFluxCoeffAlgorithm.h>
 #include <EffectiveSSTDiffFluxCoeffAlgorithm.h>
+#include <EffectiveHybKsgsDiffFluxCoeffAlgorithm.h>
 #include <EquationSystem.h>
 #include <EquationSystems.h>
 #include <Enums.h>
@@ -64,6 +65,7 @@
 #include <kernel/ScalarUpwAdvDiffElemKernel.h>
 #include <kernel/TurbKineticEnergyKsgsSrcElemKernel.h>
 #include <kernel/TurbKineticEnergyKsgsDesignOrderSrcElemKernel.h>
+#include <kernel/TurbKineticEnergyHybKsgsSrcElemKernel.h>
 
 // nso
 #include <nso/ScalarNSOElemKernel.h>
@@ -138,8 +140,8 @@ TurbKineticEnergyEquationSystem::TurbKineticEnergyEquationSystem(
   realm_.push_equation_to_systems(this);
 
   // sanity check on turbulence model
-  if ( (turbulenceModel_ != SST) && (turbulenceModel_ != KSGS) && (turbulenceModel_ != SST_DES) ) {
-    throw std::runtime_error("User has requested TurbKinEnergyEqs, however, turbulence model is not KSGS, SST or SST_DES");
+  if ( (turbulenceModel_ != SST) && (turbulenceModel_ != KSGS) && (turbulenceModel_ != SST_DES) && (turbulenceModel_ != HYB_SST_KSGS) ) {
+    throw std::runtime_error("User has requested TurbKinEnergyEqs, however, turbulence model is not KSGS, SST, SST_DES, or HYB_SST_KSGS");
   }
 
   // create projected nodal gradient equation system
@@ -422,6 +424,10 @@ TurbKineticEnergyEquationSystem::register_interior_algorithm(
       build_topo_kernel_if_requested<TurbKineticEnergyKsgsDesignOrderSrcElemKernel>
         (partTopo, *this, activeKernels, "design_order_ksgs",
          realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs);
+
+      build_topo_kernel_if_requested<TurbKineticEnergyHybKsgsSrcElemKernel>
+        (partTopo, *this, activeKernels, "hybrid_ksgs",
+         realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs);
       
       build_topo_kernel_if_requested<ScalarNSOElemKernel>
         (partTopo, *this, activeKernels, "NSO_2ND",
@@ -464,8 +470,13 @@ TurbKineticEnergyEquationSystem::register_interior_algorithm(
         effDiffAlg = new EffectiveSSTDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, sigmaKOne, sigmaKTwo);
       }
       break;
+      case HYB_SST_KSGS:
+      {
+        const double sigmaKsgs = 1.0 / realm_.get_turb_schmidt(tke_->name()); //check this!
+        effDiffAlg = new EffectiveHybKsgsDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, sigmaKOne, sigmaKTwo, sigmaKsgs);
+      }
       default:
-        throw std::runtime_error("Unsupported turbulence model in TurbKe: only SST, SST_DES and Ksgs supported");
+        throw std::runtime_error("Unsupported turbulence model in TurbKe: only SST, SST_DES, HYB_SST_KSGS and KSGS supported");
     }
     diffFluxCoeffAlgDriver_->algMap_[algType] = effDiffAlg;
   }

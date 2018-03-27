@@ -7,7 +7,7 @@
 
 
 // nalu
-#include <TurbViscSSTAlgorithm.h>
+#include <TurbViscHybKsgsAlgorithm.h>
 #include <Algorithm.h>
 #include <FieldTypeDef.h>
 #include <Realm.h>
@@ -25,24 +25,28 @@ namespace nalu{
 //==========================================================================
 // Class Definition
 //==========================================================================
-// TurbViscSSTAlgorithm - compute tvisc for SST model
+// TurbViscHybKsgsAlgorithm - compute tvisc for Hybrid SST-Ksgs model
 //==========================================================================
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
-TurbViscSSTAlgorithm::TurbViscSSTAlgorithm(
+TurbViscHybKsgsAlgorithm::TurbViscHybKsgsAlgorithm(
   Realm &realm,
   stk::mesh::Part *part)
   : Algorithm(realm, part),
     aOne_(realm.get_turb_model_constant(TM_aOne)),
     betaStar_(realm.get_turb_model_constant(TM_betaStar)),
+    cmuEps_(realm.get_turb_model_constant(TM_cmuEps)),
     density_(NULL),
     viscosity_(NULL),
     tke_(NULL),
     sdr_(NULL),
     minDistance_(NULL),
     dudx_(NULL),
-    tvisc_(NULL)
+    tvisc_(NULL),
+    hybridBlending_(NULL),
+    fLNS_(NULL),
+    dualNodalVolume_(NULL)
 {
   // 2003 variant; basically, sijMag replaces vorticityMag
   stk::mesh::MetaData & meta_data = realm_.meta_data();
@@ -53,18 +57,22 @@ TurbViscSSTAlgorithm::TurbViscSSTAlgorithm(
   minDistance_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "minimum_distance_to_wall");
   dudx_ = meta_data.get_field<GenericFieldType>(stk::topology::NODE_RANK, "dudx");
   tvisc_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity");
+  hybridBlending_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "sst_hybrid_blending");
+  fLNS_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "hyb_lim_num_scales");
+  dualNodalVolume_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "dual_nodal_volume");
 }
 
 //--------------------------------------------------------------------------
 //-------- execute ---------------------------------------------------------
 //--------------------------------------------------------------------------
 void
-TurbViscSSTAlgorithm::execute()
+TurbViscHybKsgsAlgorithm::execute()
 {
 
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
   const int nDim = meta_data.spatial_dimension();
+  const double invNdim = 1.0/meta_data.spatial_dimension();
 
   // define some common selectors
   stk::mesh::Selector s_all_nodes
@@ -84,6 +92,9 @@ TurbViscSSTAlgorithm::execute()
     const double *sdr = stk::mesh::field_data(*sdr_, b);
     const double *minD = stk::mesh::field_data(*minDistance_, b);
     double *tvisc = stk::mesh::field_data(*tvisc_, b);
+    double *hybridBlending = stk::mesh::field_data(*hybridBlending_, b);
+    double *dualNodalVolume = stk::mesh::field_data(*dualNodalVolume_, b);
+    double *fLNS = stk::mesh::field_data(*fLNS_, b);
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
 
@@ -106,7 +117,13 @@ TurbViscSSTAlgorithm::execute()
       const double fArgTwo = std::max(2.0*trbDiss, lamDiss);
       const double fTwo = std::tanh(fArgTwo*fArgTwo);
 
-      tvisc[k] = aOne_*rho[k]*tke[k]/std::max(aOne_*sdr[k], sijMag*fTwo);
+      const double tvisc_SST = aOne_*rho[k]*tke[k]/std::max(aOne_*sdr[k], sijMag*fTwo);
+
+      const double filter = std::pow(dualNodalVolume[k], invNdim);
+      const double tvisc_ksgs = cmuEps_*density[k]*std::sqrt(tke[k])*filter;
+
+      tvisc[k] = hybridBlending[k] * tvisc_SST + (1.0 - hybridBlending[k]) * tvisc_ksgs;
+      fLNS[k] = tvisc_ksgs > tvisc_SST ? 1.0 : 0.0;
 
     }
   }

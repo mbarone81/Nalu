@@ -66,6 +66,8 @@ public:
   ScalarFieldType *minDistanceToWall_;
   ScalarFieldType *fOneBlending_;
   ScalarFieldType *maxLengthScale_;
+  ScalarFieldType *hybridBlending_;
+  ScalarFieldType *fLNS_;
 
   bool isInit_;
   AlgorithmDriver *sstMaxLengthScaleAlgDriver_;

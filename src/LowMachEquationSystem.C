@@ -1406,6 +1406,9 @@ MomentumEquationSystem::register_interior_algorithm(
         case SST: case SST_DES:
           theAlg = new TurbViscSSTAlgorithm(realm_, part);
           break;
+        case HYB_SST_KSGS;
+          theAlg = new TurbViscHybKsgsAlgorithm(realm_, part);
+          break;
         default:
           throw std::runtime_error("non-supported turb model");
       }
