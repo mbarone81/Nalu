@@ -46,6 +46,7 @@
 #include <SolutionOptions.h>
 #include <TimeIntegrator.h>
 #include <TurbKineticEnergyKsgsNodeSourceSuppAlg.h>
+#include <TurbKineticEnergyHybKsgsNodeSourceSuppAlg.h>
 #include <TurbKineticEnergySSTNodeSourceSuppAlg.h>
 #include <TurbKineticEnergySSTDESNodeSourceSuppAlg.h>
 #include <TurbKineticEnergyKsgsBuoyantElemSuppAlg.h>
@@ -352,6 +353,10 @@ TurbKineticEnergyEquationSystem::register_interior_algorithm(
           theSrc = new TurbKineticEnergySSTDESNodeSourceSuppAlg(realm_);
         }
         break;
+      case HYB_SST_KSGS:
+        {
+          theSrc = new TurbKineticEnergyHybKsgsNodeSourceSuppAlg(realm_);
+        }
       default:
         throw std::runtime_error("Unsupported turbulence model in TurbKe: only SST, SST_DES and Ksgs supported");
       }

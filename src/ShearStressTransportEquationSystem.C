@@ -56,7 +56,8 @@ ShearStressTransportEquationSystem::ShearStressTransportEquationSystem(
     isInit_(true),
     sstMaxLengthScaleAlgDriver_(NULL),
     hybridBlending_(NULL),
-    fLNS_(NULL)
+    fLNS_(NULL),
+    tviscSST_(NULL)
 {
   // push back EQ to manager
   realm_.push_equation_to_systems(this);
@@ -121,6 +122,8 @@ ShearStressTransportEquationSystem::register_nodal_fields(
     stk::mesh::put_field(*hybridBlending_, *part);
     fLNS_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "hyb_lim_num_scales"));
     stk::mesh::put_field(*fLNS_, *part);
+    tviscSST_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity_SST"));
+    stk::mesh::put_field(*tviscSST_, *part);
   }
 
   // add to restart field

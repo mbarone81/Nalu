@@ -68,6 +68,7 @@ public:
   ScalarFieldType *maxLengthScale_;
   ScalarFieldType *hybridBlending_;
   ScalarFieldType *fLNS_;
+  ScalarFieldType *tviscSST_;
 
   bool isInit_;
   AlgorithmDriver *sstMaxLengthScaleAlgDriver_;

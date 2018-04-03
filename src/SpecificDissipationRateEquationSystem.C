@@ -330,8 +330,14 @@ SpecificDissipationRateEquationSystem::register_interior_algorithm(
   if ( itev == diffFluxCoeffAlgDriver_->algMap_.end() ) {
     const double sigmaWOne = realm_.get_turb_model_constant(TM_sigmaWOne);
     const double sigmaWTwo = realm_.get_turb_model_constant(TM_sigmaWTwo);
-    EffectiveSSTDiffFluxCoeffAlgorithm *effDiffAlg
-      = new EffectiveSSTDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, sigmaWOne, sigmaWTwo);
+    if (HYB_SST_KSGS == realm_.solutionOptions_->turbulenceModel_) {
+      EffectiveSSTDiffFluxCoeffAlgorithm *effDiffAlg
+        = new EffectiveSSTDiffFluxCoeffAlgorithm(realm_, part, visc_, tviscSST_, evisc_, sigmaWOne, sigmaWTwo);
+    }
+    else {
+      EffectiveSSTDiffFluxCoeffAlgorithm *effDiffAlg
+        = new EffectiveSSTDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, sigmaWOne, sigmaWTwo);
+    }
     diffFluxCoeffAlgDriver_->algMap_[algType] = effDiffAlg;
   }
   else {

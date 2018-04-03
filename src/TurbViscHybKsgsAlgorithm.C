@@ -44,6 +44,7 @@ TurbViscHybKsgsAlgorithm::TurbViscHybKsgsAlgorithm(
     minDistance_(NULL),
     dudx_(NULL),
     tvisc_(NULL),
+    tviscSST_(NULL),
     hybridBlending_(NULL),
     fLNS_(NULL),
     dualNodalVolume_(NULL)
@@ -57,6 +58,7 @@ TurbViscHybKsgsAlgorithm::TurbViscHybKsgsAlgorithm(
   minDistance_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "minimum_distance_to_wall");
   dudx_ = meta_data.get_field<GenericFieldType>(stk::topology::NODE_RANK, "dudx");
   tvisc_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity");
+  tviscSST_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity_SST");
   hybridBlending_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "sst_hybrid_blending");
   fLNS_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "hyb_lim_num_scales");
   dualNodalVolume_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "dual_nodal_volume");
@@ -92,6 +94,7 @@ TurbViscHybKsgsAlgorithm::execute()
     const double *sdr = stk::mesh::field_data(*sdr_, b);
     const double *minD = stk::mesh::field_data(*minDistance_, b);
     double *tvisc = stk::mesh::field_data(*tvisc_, b);
+    double *tviscSST = stk::mesh::field_data(*tviscSST_, b);
     double *hybridBlending = stk::mesh::field_data(*hybridBlending_, b);
     double *dualNodalVolume = stk::mesh::field_data(*dualNodalVolume_, b);
     double *fLNS = stk::mesh::field_data(*fLNS_, b);
@@ -123,6 +126,7 @@ TurbViscHybKsgsAlgorithm::execute()
       const double tvisc_ksgs = cmuEps_*density[k]*std::sqrt(tke[k])*filter;
 
       tvisc[k] = hybridBlending[k] * tvisc_SST + (1.0 - hybridBlending[k]) * tvisc_ksgs;
+      tviscSST[k] = tvisc_SST;
       fLNS[k] = tvisc_ksgs > tvisc_SST ? 1.0 : 0.0;
 
     }

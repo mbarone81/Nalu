@@ -92,6 +92,7 @@
 #include <SolutionOptions.h>
 #include <SolverAlgorithmDriver.h>
 #include <TurbViscKsgsAlgorithm.h>
+#include <TurbViscHybKsgsAlgorithm.h>
 #include <TurbViscSmagorinskyAlgorithm.h>
 #include <TurbViscSSTAlgorithm.h>
 #include <TurbViscWaleAlgorithm.h>
