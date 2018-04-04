@@ -149,6 +149,7 @@ enum TurbulenceModel {
   WALE = 3,
   SST = 4,
   SST_DES = 5,
+  HYB_SST_KSGS = 6,
   TurbulenceModel_END
 };  
 

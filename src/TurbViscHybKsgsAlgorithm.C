@@ -123,7 +123,7 @@ TurbViscHybKsgsAlgorithm::execute()
       const double tvisc_SST = aOne_*rho[k]*tke[k]/std::max(aOne_*sdr[k], sijMag*fTwo);
 
       const double filter = std::pow(dualNodalVolume[k], invNdim);
-      const double tvisc_ksgs = cmuEps_*density[k]*std::sqrt(tke[k])*filter;
+      const double tvisc_ksgs = cmuEps_*rho[k]*std::sqrt(tke[k])*filter;
 
       tvisc[k] = hybridBlending[k] * tvisc_SST + (1.0 - hybridBlending[k]) * tvisc_ksgs;
       tviscSST[k] = tvisc_SST;

@@ -56,6 +56,7 @@ public:
 
   void clip_min_distance_to_wall();
   void compute_f_one_blending();
+  void compute_hybrid_blending();
   void update_and_clip();
 
   TurbKineticEnergyEquationSystem *tkeEqSys_;

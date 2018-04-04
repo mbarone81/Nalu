@@ -477,6 +477,8 @@ TurbKineticEnergyEquationSystem::register_interior_algorithm(
       break;
       case HYB_SST_KSGS:
       {
+        const double sigmaKOne = realm_.get_turb_model_constant(TM_sigmaKOne);
+        const double sigmaKTwo = realm_.get_turb_model_constant(TM_sigmaKTwo);
         const double sigmaKsgs = 1.0 / realm_.get_turb_schmidt(tke_->name()); //check this!
         effDiffAlg = new EffectiveHybKsgsDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, sigmaKOne, sigmaKTwo, sigmaKsgs);
       }

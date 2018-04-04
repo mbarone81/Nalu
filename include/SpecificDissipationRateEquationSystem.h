@@ -83,6 +83,7 @@ public:
   ScalarFieldType *wTmp_;
   ScalarFieldType *visc_;
   ScalarFieldType *tvisc_;
+  ScalarFieldType *tviscSST_;
   ScalarFieldType *evisc_;
   ScalarFieldType *sdrWallBc_;
   ScalarFieldType *assembledWallSdr_;

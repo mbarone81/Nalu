@@ -50,8 +50,8 @@ TurbKineticEnergyHybKsgsSrcElemKernel<AlgTraits>::TurbKineticEnergyHybKsgsSrcEle
   dualNodalVolume_ = metaData.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "dual_nodal_volume");
   Gju_ = metaData.get_field<GenericFieldType>(
     stk::topology::NODE_RANK, "dudx");
-  fHatBlend_ = metaData.get_field<ScalarFieldType<(
-    stk::topology::NODE_RANK "fhat_blend");
+  fHatBlend_ = metaData.get_field<ScalarFieldType>(
+    stk::topology::NODE_RANK, "fhat_blend");
 
   MasterElement *meSCV = sierra::nalu::MasterElementRepo::get_volume_master_element(AlgTraits::topo_);
 
@@ -70,12 +70,12 @@ TurbKineticEnergyHybKsgsSrcElemKernel<AlgTraits>::TurbKineticEnergyHybKsgsSrcEle
 }
 
 template<typename AlgTraits>
-TurbKineticEnergyKsgsSrcElemKernel<AlgTraits>::~TurbKineticEnergyKsgsSrcElemKernel()
+TurbKineticEnergyHybKsgsSrcElemKernel<AlgTraits>::~TurbKineticEnergyHybKsgsSrcElemKernel()
 {}
 
 template<typename AlgTraits>
 void
-TurbKineticEnergyKsgsSrcElemKernel<AlgTraits>::execute(
+TurbKineticEnergyHybKsgsSrcElemKernel<AlgTraits>::execute(
   SharedMemView<DoubleType **>&lhs,
   SharedMemView<DoubleType *>&rhs,
   ScratchViews<DoubleType>& scratchViews)
@@ -83,7 +83,7 @@ TurbKineticEnergyKsgsSrcElemKernel<AlgTraits>::execute(
   SharedMemView<DoubleType*>& v_tkeNp1 = scratchViews.get_scratch_view_1D(
     *tkeNp1_);
   SharedMemView<DoubleType*>& v_sdrNp1 = scratchViews.get_scratch_view_1D(
-    *sdrNp1_)
+    *sdrNp1_);
   SharedMemView<DoubleType*>& v_densityNp1 = scratchViews.get_scratch_view_1D(
     *densityNp1_);
   SharedMemView<DoubleType*>& v_tvisc = scratchViews.get_scratch_view_1D(
@@ -110,10 +110,10 @@ TurbKineticEnergyKsgsSrcElemKernel<AlgTraits>::execute(
     const DoubleType tke = v_tkeNp1(nearestNode);
     const DoubleType sdr = v_sdrNp1(nearestNode);
     const DoubleType fHatBlend = v_fhatBlend(nearestNode);
-    const DoubleType om_fHatBlend = 1.0 - fhatBlend;
+    const DoubleType om_fHatBlend = 1.0 - fHatBlend;
     const DoubleType tkeFac = (AlgTraits::nDim_ == 2) ?
-      v_densityNp1(nearestNode)*( fHatBlend*betaStar_*sdr + om_fhatBlend*cEps_*stk::math::sqrt(tke/v_dualNodalVolume(nearestNode)) )
-      : v_densityNp1(nearestNode)*( fHatBlend*betaStar_*sdr + om_fhatBlend*cEps_*stk::math::sqrt(tke)/stk::math::cbrt(v_dualNodalVolume(nearestNode)) );
+      v_densityNp1(nearestNode)*( fHatBlend*betaStar_*sdr + om_fHatBlend*cEps_*stk::math::sqrt(tke/v_dualNodalVolume(nearestNode)) )
+      : v_densityNp1(nearestNode)*( fHatBlend*betaStar_*sdr + om_fHatBlend*cEps_*stk::math::sqrt(tke)/stk::math::cbrt(v_dualNodalVolume(nearestNode)) );
 
     // dissipation and production; limited
     DoubleType Dk = tkeFac * tke;

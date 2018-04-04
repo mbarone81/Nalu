@@ -53,11 +53,11 @@ ShearStressTransportEquationSystem::ShearStressTransportEquationSystem(
     minDistanceToWall_(NULL),
     fOneBlending_(NULL),
     maxLengthScale_(NULL),
-    isInit_(true),
-    sstMaxLengthScaleAlgDriver_(NULL),
     hybridBlending_(NULL),
     fLNS_(NULL),
-    tviscSST_(NULL)
+    tviscSST_(NULL),
+    isInit_(true),
+    sstMaxLengthScaleAlgDriver_(NULL)
 {
   // push back EQ to manager
   realm_.push_equation_to_systems(this);
@@ -579,8 +579,6 @@ ShearStressTransportEquationSystem::compute_hybrid_blending()
 {
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
-  const int nDim = meta_data.spatial_dimension();
-
   // model parameters
   const double betaStar = realm_.get_turb_model_constant(TM_betaStar);
 
@@ -625,7 +623,8 @@ ShearStressTransportEquationSystem::compute_hybrid_blending()
 
       // blending function
       fBlend[k] = std::max(std::tanh(fArg*fArg*fArg*fArg), fLNS[k]);
-
+    }
+  }
 }
 
 } // namespace nalu

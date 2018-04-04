@@ -94,6 +94,7 @@ SpecificDissipationRateEquationSystem::SpecificDissipationRateEquationSystem(
     wTmp_(NULL),
     visc_(NULL),
     tvisc_(NULL),
+    tviscSST_(NULL),
     evisc_(NULL),
     sdrWallBc_(NULL),
     assembledWallSdr_(NULL),
@@ -160,6 +161,9 @@ SpecificDissipationRateEquationSystem::register_nodal_fields(
 
   tvisc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity"));
   stk::mesh::put_field(*tvisc_, *part);
+
+  tviscSST_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity_SST"));
+  stk::mesh::put_field(*tviscSST_, *part);
 
   evisc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "effective_viscosity_sdr"));
   stk::mesh::put_field(*evisc_, *part);
@@ -330,13 +334,12 @@ SpecificDissipationRateEquationSystem::register_interior_algorithm(
   if ( itev == diffFluxCoeffAlgDriver_->algMap_.end() ) {
     const double sigmaWOne = realm_.get_turb_model_constant(TM_sigmaWOne);
     const double sigmaWTwo = realm_.get_turb_model_constant(TM_sigmaWTwo);
+    EffectiveSSTDiffFluxCoeffAlgorithm *effDiffAlg;
     if (HYB_SST_KSGS == realm_.solutionOptions_->turbulenceModel_) {
-      EffectiveSSTDiffFluxCoeffAlgorithm *effDiffAlg
-        = new EffectiveSSTDiffFluxCoeffAlgorithm(realm_, part, visc_, tviscSST_, evisc_, sigmaWOne, sigmaWTwo);
+      effDiffAlg = new EffectiveSSTDiffFluxCoeffAlgorithm(realm_, part, visc_, tviscSST_, evisc_, sigmaWOne, sigmaWTwo);
     }
     else {
-      EffectiveSSTDiffFluxCoeffAlgorithm *effDiffAlg
-        = new EffectiveSSTDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, sigmaWOne, sigmaWTwo);
+      effDiffAlg = new EffectiveSSTDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, sigmaWOne, sigmaWTwo);
     }
     diffFluxCoeffAlgDriver_->algMap_[algType] = effDiffAlg;
   }

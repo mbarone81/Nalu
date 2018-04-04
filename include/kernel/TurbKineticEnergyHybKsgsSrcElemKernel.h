@@ -26,15 +26,15 @@ class ElemDataRequests;
 /** Add Ksgs source term for kernel-based algorithm approach
  */
 template<typename AlgTraits>
-class TurbKineticEnergyKsgsSrcElemKernel: public Kernel
+class TurbKineticEnergyHybKsgsSrcElemKernel: public Kernel
 {
 public:
-  TurbKineticEnergyKsgsSrcElemKernel(
+  TurbKineticEnergyHybKsgsSrcElemKernel(
     const stk::mesh::BulkData&,
     const SolutionOptions&,
     ElemDataRequests&);
 
-  virtual ~TurbKineticEnergyKsgsSrcElemKernel();
+  virtual ~TurbKineticEnergyHybKsgsSrcElemKernel();
 
   /** Execute the kernel within a Kokkos loop and populate the LHS and RHS for
    *  the linear solve
@@ -45,7 +45,7 @@ public:
     ScratchViews<DoubleType>&);
 
 private:
-  TurbKineticEnergyKsgsSrcElemKernel() = delete;
+  TurbKineticEnergyHybKsgsSrcElemKernel() = delete;
 
   VectorFieldType *coordinates_{nullptr};
   ScalarFieldType *tkeNp1_{nullptr};

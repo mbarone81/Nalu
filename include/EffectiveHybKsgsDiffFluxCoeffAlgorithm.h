@@ -29,7 +29,8 @@ public:
     ScalarFieldType *tvisc,
     ScalarFieldType *evisc,
     const double sigmaOne,
-    const double sigmaTwo);
+    const double sigmaTwo,
+    const double sigmaKsgs);
   virtual ~EffectiveHybKsgsDiffFluxCoeffAlgorithm() {}
   virtual void execute();
 

@@ -80,7 +80,7 @@ EffectiveHybKsgsDiffFluxCoeffAlgorithm::execute()
     const double * visc = stk::mesh::field_data(*visc_, b);
     const double * tvisc = stk::mesh::field_data(*tvisc_, b);
     const double * fOneBlend = stk::mesh::field_data(*fOneBlend_, b);
-    const double * hybBlend = stk::mesh::field_data(*hybridBlend_, b);
+    const double * hybBlend = stk::mesh::field_data(*hybBlend_, b);
     double * evisc = stk::mesh::field_data(*evisc_, b);
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
