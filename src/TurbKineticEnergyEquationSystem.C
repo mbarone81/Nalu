@@ -357,8 +357,11 @@ TurbKineticEnergyEquationSystem::register_interior_algorithm(
         {
           theSrc = new TurbKineticEnergyHybKsgsNodeSourceSuppAlg(realm_);
         }
+        break;
       default:
-        throw std::runtime_error("Unsupported turbulence model in TurbKe: only SST, SST_DES and Ksgs supported");
+        {
+        throw std::runtime_error("Unsupported turbulence model in TurbKe: only SST, SST_DES, Ksgs, and Hyb_SST_Ksgs supported");
+	}
       }
       theAlg->supplementalAlg_.push_back(theSrc);
       
@@ -482,6 +485,7 @@ TurbKineticEnergyEquationSystem::register_interior_algorithm(
         const double sigmaKsgs = 1.0 / realm_.get_turb_schmidt(tke_->name()); //check this!
         effDiffAlg = new EffectiveHybKsgsDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, sigmaKOne, sigmaKTwo, sigmaKsgs);
       }
+      break;
       default:
         throw std::runtime_error("Unsupported turbulence model in TurbKe: only SST, SST_DES, HYB_SST_KSGS and KSGS supported");
     }

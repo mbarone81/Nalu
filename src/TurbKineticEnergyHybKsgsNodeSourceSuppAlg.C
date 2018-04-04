@@ -54,7 +54,7 @@ TurbKineticEnergyHybKsgsNodeSourceSuppAlg::TurbKineticEnergyHybKsgsNodeSourceSup
   densityNp1_ = &(density->field_of_state(stk::mesh::StateNP1));
   tvisc_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity");
   dudx_ = meta_data.get_field<GenericFieldType>(stk::topology::NODE_RANK, "dudx");
-  fHatBlend_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "fhat_blend");
+  fHatBlend_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "sst_hybrid_blending");
   dualNodalVolume_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "dual_nodal_volume");
 }
 

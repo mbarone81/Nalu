@@ -130,7 +130,7 @@ ShearStressTransportEquationSystem::register_nodal_fields(
   realm_.augment_restart_variable_list("minimum_distance_to_wall");
   realm_.augment_restart_variable_list("sst_f_one_blending");
   if ( HYB_SST_KSGS == realm_.solutionOptions_->turbulenceModel_ )
-    realm_.augment_restart_variable_list("hybrid_blending");
+    realm_.augment_restart_variable_list("sst_hybrid_blending");
 }
 
 
