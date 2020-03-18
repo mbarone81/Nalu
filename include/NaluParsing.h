@@ -197,6 +197,7 @@ struct WallUserData : public UserData {
 
   bool wallFunctionApproach_;
   bool wallFunctionProjectedApproach_;
+  bool mlWallFunctionProjectedApproach_;
   double projectedDistance_;
 
   bool isFsiInterface_;
@@ -213,6 +214,7 @@ struct WallUserData : public UserData {
       irradSpec_(false),
       wallFunctionApproach_(false),
       wallFunctionProjectedApproach_(false),
+      mlWallFunctionProjectedApproach_(false),
       projectedDistance_(1.0),
       isFsiInterface_(false) {}    
 };

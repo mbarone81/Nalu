@@ -708,7 +708,7 @@ TurbKineticEnergyEquationSystem::register_wall_bc(
   WallUserData userData = wallBCData.userData_;
   std::string tkeName = "turbulent_ke";
   const bool tkeSpecified = bc_data_specified(userData, tkeName);
-  bool anyWallFunctionActivated = userData.wallFunctionApproach_ || userData.wallFunctionProjectedApproach_;
+  bool anyWallFunctionActivated = userData.wallFunctionApproach_ || userData.wallFunctionProjectedApproach_ || userData.mlWallFunctionProjectedApproach_;
 
   if ( tkeSpecified && anyWallFunctionActivated ) {
     NaluEnv::self().naluOutputP0() << "Both wall function and tke specified; will go with dirichlet" << std::endl;

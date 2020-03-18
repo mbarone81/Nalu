@@ -31,6 +31,7 @@ enum AlgorithmType{
   ELEM_SOURCE = 12,
   OVERSET = 13,
   WALL_FCN_PROJ = 14,
+  WALL_FCN_ML_PROJ = 15,
   /** Set the reference pressure at a node.
    *
    *  Used only for continuity equation system. This needs to be the last
@@ -39,7 +40,7 @@ enum AlgorithmType{
    *
    * \sa FixPressureAtNodeAlgorithm
    */
-  REF_PRESSURE = 15
+  REF_PRESSURE = 16
 };
 
 enum BoundaryConditionType{

@@ -72,6 +72,8 @@ SurfaceForceAndMomentAlgorithmDriver::zero_fields()
   ScalarFieldType *assembledArea = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment");
   ScalarFieldType *assembledAreaWF = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment_wf");
   ScalarFieldType *assembledAreaWFP = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment_wfp");
+  ScalarFieldType *assembledAreaMLWFP = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment_ml_wfp");
+  VectorFieldType *vectorTauWall = meta_data.get_field<VectorFieldType>(stk::topology::NODE_RANK, "vector_tau_wall");
 
   // zero fields
   field_fill( meta_data, bulk_data, 0.0, *pressureForce, realm_.get_activate_aura());
@@ -83,6 +85,10 @@ SurfaceForceAndMomentAlgorithmDriver::zero_fields()
     field_fill( meta_data, bulk_data, 0.0, *assembledAreaWF, realm_.get_activate_aura());
   if ( NULL != assembledAreaWFP ) 
     field_fill( meta_data, bulk_data, 0.0, *assembledAreaWFP, realm_.get_activate_aura());
+  if ( NULL != assembledAreaMLWFP ) 
+    field_fill( meta_data, bulk_data, 0.0, *assembledAreaMLWFP, realm_.get_activate_aura());
+  if ( NULL != vectorTauWall ) 
+    field_fill( meta_data, bulk_data, 0.0, *vectorTauWall, realm_.get_activate_aura());
 }
 
 //--------------------------------------------------------------------------
@@ -100,9 +106,13 @@ SurfaceForceAndMomentAlgorithmDriver::parallel_assemble_fields()
   VectorFieldType *pressureForce = meta_data.get_field<VectorFieldType>(stk::topology::NODE_RANK, "pressure_force");
   ScalarFieldType *tauWall = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "tau_wall");
   ScalarFieldType *yplus = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "yplus");
+  VectorFieldType *vectorTauWall = meta_data.get_field<VectorFieldType>(stk::topology::NODE_RANK, "vector_tau_wall");
 
   // parallel assemble
   stk::mesh::parallel_sum(bulk_data, {pressureForce, tauWall, yplus});
+  if ( NULL != vectorTauWall ) {
+    stk::mesh::parallel_sum(bulk_data, {vectorTauWall});
+  }
 
   // periodic assemble
   if ( realm_.hasPeriodic_) {
@@ -110,8 +120,10 @@ SurfaceForceAndMomentAlgorithmDriver::parallel_assemble_fields()
     realm_.periodic_field_update(pressureForce, nDim, bypassFieldCheck);
     realm_.periodic_field_update(tauWall, 1, bypassFieldCheck);
     realm_.periodic_field_update(yplus, 1, bypassFieldCheck);
+    if ( NULL != vectorTauWall ) {
+      realm_.periodic_field_update(vectorTauWall, nDim, bypassFieldCheck);
+    }
   }
-
 }
 
 //--------------------------------------------------------------------------
@@ -128,6 +140,7 @@ SurfaceForceAndMomentAlgorithmDriver::parallel_assemble_area()
   ScalarFieldType *assembledArea = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment");
   ScalarFieldType *assembledAreaWF = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment_wf");
   ScalarFieldType *assembledAreaWFP = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment_wfp");
+  ScalarFieldType *assembledAreaMLWFP = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment_ml_wfp");
 
   // parallel assemble
   std::vector<const stk::mesh::FieldBase*> fields;
@@ -137,6 +150,8 @@ SurfaceForceAndMomentAlgorithmDriver::parallel_assemble_area()
     fields.push_back(assembledAreaWF);
   if ( NULL != assembledAreaWFP )
     fields.push_back(assembledAreaWFP);
+  if ( NULL != assembledAreaMLWFP )
+    fields.push_back(assembledAreaMLWFP);
   stk::mesh::parallel_sum(bulk_data, fields);
 
   // periodic assemble
@@ -148,6 +163,8 @@ SurfaceForceAndMomentAlgorithmDriver::parallel_assemble_area()
       realm_.periodic_field_update(assembledAreaWF, 1, bypassFieldCheck);
     if ( NULL != assembledAreaWFP )
       realm_.periodic_field_update(assembledAreaWFP, 1, bypassFieldCheck);
+    if ( NULL != assembledAreaMLWFP )
+      realm_.periodic_field_update(assembledAreaMLWFP, 1, bypassFieldCheck);
   }
 
 }

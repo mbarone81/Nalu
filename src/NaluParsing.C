@@ -854,6 +854,10 @@ namespace YAML
     {
       wallData.wallFunctionProjectedApproach_ = node["use_wall_function_projected"].as<bool>();
     }
+    if (node["use_ml_wall_function_projected"])
+    {
+      wallData.mlWallFunctionProjectedApproach_ = node["use_ml_wall_function_projected"].as<bool>();
+    }
     if (node["projected_distance"]) 
     {
       wallData.projectedDistance_ = node["projected_distance"].as<double>();
