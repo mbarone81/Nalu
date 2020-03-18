@@ -19,18 +19,18 @@ enum AlgorithmType{
   INTERIOR  = 0,
   INFLOW    = 1,
   WALL      = 2,
-  OPEN      = 3,
-  MASS      = 4,
-  SRC       = 5,
-  SYMMETRY  = 6,
-  WALL_HF   = 7,
-  WALL_CHT  = 8,
-  WALL_RAD  = 9,
-  NON_CONFORMAL = 10,
-  ELEM_SOURCE = 11,
-  OVERSET = 12,
-  WALL_ABL = 13,
-
+  WALL_FCN  = 3,
+  OPEN      = 4,
+  MASS      = 5,
+  SRC       = 6,
+  SYMMETRY  = 7,
+  WALL_HF   = 8,
+  WALL_CHT  = 9,
+  WALL_RAD  = 10,
+  NON_CONFORMAL = 11,
+  ELEM_SOURCE = 12,
+  OVERSET = 13,
+  WALL_FCN_PROJ = 14,
   /** Set the reference pressure at a node.
    *
    *  Used only for continuity equation system. This needs to be the last
@@ -39,7 +39,7 @@ enum AlgorithmType{
    *
    * \sa FixPressureAtNodeAlgorithm
    */
-  REF_PRESSURE = 14
+  REF_PRESSURE = 15
 };
 
 enum BoundaryConditionType{
@@ -128,12 +128,10 @@ enum  MaterialPropertyType {
   CONSTANT_MAT = 0,
   MIXFRAC_MAT = 1,
   POLYNOMIAL_MAT = 2,
-  IDEAL_GAS_T_MAT = 3,
+  IDEAL_GAS_MAT = 3,
   GEOMETRIC_MAT = 4,
-  IDEAL_GAS_T_P_MAT = 5,
-  HDF5_TABLE_MAT = 6,
-  IDEAL_GAS_YK_MAT = 7,
-  GENERIC = 8,
+  HDF5_TABLE_MAT = 5,
+  GENERIC = 6,
   MaterialPropertyType_END
 };
 
@@ -220,11 +218,10 @@ static const std::string TurbulenceModelConstantNames[] = {
 
 enum ActuatorType {
   ActLinePointDrag = 0,
-  ActLineFAST = 1,
   ActuatorType_END
 };
 
- static std::map<std::string, ActuatorType> ActuatorTypeMap = { {"ActLinePointDrag",ActuatorType::ActLinePointDrag}, {"ActLineFAST",ActuatorType::ActLineFAST}};
+ static std::map<std::string, ActuatorType> ActuatorTypeMap = {{"ActLinePointDrag",ActuatorType::ActLinePointDrag}};
 
 } // namespace nalu
 } // namespace Sierra

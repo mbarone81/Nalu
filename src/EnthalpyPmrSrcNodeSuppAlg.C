@@ -24,7 +24,7 @@ namespace nalu{
 //==========================================================================
 // Class Definition
 //==========================================================================
-// EnthalpyPmrSrcNodeSuppAlg - base class for algorithm
+// EnthalpyPmrSrcNodeSuppAlg - d/dt(rho*h) = -divQr
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
@@ -32,11 +32,15 @@ EnthalpyPmrSrcNodeSuppAlg::EnthalpyPmrSrcNodeSuppAlg(
   Realm &realm)
   : SupplementalAlgorithm(realm),
     divRadFlux_(NULL),
+    divRadFluxLin_(NULL),
+    specificHeat_(NULL),
     dualNodalVolume_(NULL)
 {
   // save off fields
   stk::mesh::MetaData & meta_data = realm_.meta_data();
   divRadFlux_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "div_radiative_heat_flux");
+  divRadFluxLin_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "div_radiative_heat_flux_linearization");
+  specificHeat_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "specific_heat");
   dualNodalVolume_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "dual_nodal_volume");
 }
 
@@ -49,12 +53,14 @@ EnthalpyPmrSrcNodeSuppAlg::node_execute(
   double *rhs,
   stk::mesh::Entity node)
 {
-  // explicit coupling for now...
-  const double divQ       = *stk::mesh::field_data(*divRadFlux_, node );
+  // implicit based on linearization value (may or may not be zero) 
+  const double divQ = *stk::mesh::field_data(*divRadFlux_, node );
+  const double divQLin = *stk::mesh::field_data(*divRadFluxLin_, node );
+  const double specificHeat = *stk::mesh::field_data(*specificHeat_, node );
   const double dualVolume = *stk::mesh::field_data(*dualNodalVolume_, node );
-
+  // divQ = absorption[k]*(4.0*sb*T*T*T*T-G) = (4.0*pi*rad_source - absorption*G)
   rhs[0] -= divQ*dualVolume;
-  lhs[0] += 0.0;
+  lhs[0] += divQLin/specificHeat*dualVolume;
 }
 
 } // namespace nalu

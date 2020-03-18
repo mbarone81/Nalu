@@ -14,7 +14,8 @@
 #include <NaluParsing.h>
 
 namespace stk{
-struct topology;
+  struct topology;
+  class Ghosting;
 }
 
 namespace sierra{
@@ -30,6 +31,8 @@ class ComputeMdotAlgorithmDriver;
 class LinearSystem;
 class ProjectedNodalGradientEquationSystem;
 class SurfaceForceAndMomentAlgorithmDriver;
+class WallFunctionParamsAlgorithmDriver;
+class PointInfo;
 
 /** Low-Mach formulation of the Navier-Stokes Equations
  *
@@ -64,7 +67,7 @@ public:
 
   virtual void register_open_bc(
     stk::mesh::Part *part,
-    const stk::topology &theTopo,
+    const stk::topology &partTopo,
     const OpenBoundaryConditionData &openBCData);
 
   virtual void register_surface_pp_algorithm(
@@ -78,7 +81,7 @@ public:
 
   virtual void pre_iter_work();
   virtual void solve_and_update();
-  virtual void post_adapt_work();
+  void compute_dynamic_pressure();
 
   virtual void predict_state();
 
@@ -98,7 +101,9 @@ public:
   SurfaceForceAndMomentAlgorithmDriver *surfaceForceAndMomentAlgDriver_;
 
   bool isInit_;
-     
+
+  // vector of algorithms for dynamic pressure calculation
+  std::vector<Algorithm *> dynamicPressureAlg_;
 };
 
 /** Representation of the Momentum conservation equations in 2-D and 3-D
@@ -134,17 +139,17 @@ public:
 
   virtual void register_open_bc(
     stk::mesh::Part *part,
-    const stk::topology &theTopo,
+    const stk::topology &partTopo,
     const OpenBoundaryConditionData &openBCData);
 
   virtual void register_wall_bc(
     stk::mesh::Part *part,
-    const stk::topology &theTopo,
+    const stk::topology &partTopo,
     const WallBoundaryConditionData &wallBCData);
     
   virtual void register_symmetry_bc(
     stk::mesh::Part *part,
-    const stk::topology &theTopo,
+    const stk::topology &partTopo,
     const SymmetryBoundaryConditionData &symmetryBCData);
 
   virtual void register_non_conformal_bc(
@@ -180,7 +185,8 @@ public:
   AlgorithmDriver *diffFluxCoeffAlgDriver_;
   AlgorithmDriver *tviscAlgDriver_;
   AlgorithmDriver *cflReyAlgDriver_;
-  AlgorithmDriver *wallFunctionParamsAlgDriver_;
+  WallFunctionParamsAlgorithmDriver *wallFunctionParamsAlgDriver_;  
+  stk::mesh::Ghosting *wallFunctionGhosting_;
 
   ProjectedNodalGradientEquationSystem *projectedNodalGradEqs_;
 
@@ -188,6 +194,9 @@ public:
 
   // saved of mesh parts that are not to be projected
   std::vector<stk::mesh::Part *> notProjectedPart_;
+  
+  // projected in space points
+  std::vector<std::vector<PointInfo *> > pointInfoVec_;
 };
 
 class ContinuityEquationSystem : public EquationSystem {
@@ -214,12 +223,12 @@ public:
 
   virtual void register_inflow_bc(
     stk::mesh::Part *part,
-    const stk::topology &theTopo,
+    const stk::topology &partTopo,
     const InflowBoundaryConditionData &inflowBCData);
 
   virtual void register_open_bc(
     stk::mesh::Part *part,
-    const stk::topology &theTopo,
+    const stk::topology &partTopo,
     const OpenBoundaryConditionData &openBCData);
 
   virtual void register_wall_bc(

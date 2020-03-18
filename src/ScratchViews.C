@@ -7,6 +7,8 @@
 
 #include <ScratchViews.h>
 
+#include <NaluEnv.h>
+
 namespace sierra {
 namespace nalu {
 
@@ -58,9 +60,9 @@ void gather_elem_tensor_field(const stk::mesh::FieldBase& field,
 
 inline
 void gather_elem_node_field_3D(const stk::mesh::FieldBase& field,
-                            int numNodes,
-                            const stk::mesh::Entity* elemNodes,
-                            SharedMemView<double**>& shmemView)
+                               int numNodes,
+                               const stk::mesh::Entity* elemNodes,
+                               SharedMemView<double**>& shmemView)
 {
   for(int i=0; i<numNodes; ++i) {
     const double* dataPtr = static_cast<const double*>(stk::mesh::field_data(field, elemNodes[i]));
@@ -92,9 +94,10 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
   MasterElement *meSCS = dataNeededBySuppAlgs.get_cvfem_surface_me();
   MasterElement *meSCV = dataNeededBySuppAlgs.get_cvfem_volume_me();
   MasterElement *meFEM = dataNeededBySuppAlgs.get_fem_volume_me();
+  MasterElement *meFCFEM = dataNeededBySuppAlgs.get_fem_face_me();
   
-  const bool faceDataNeeded = meFC != nullptr
-    && meSCS == nullptr && meSCV == nullptr && meFEM == nullptr;
+  const bool faceDataNeeded = (meFC != nullptr || meFCFEM != nullptr)
+    && (meSCS == nullptr && meSCV == nullptr && meFEM == nullptr);
   const bool elemDataNeeded = meFC == nullptr
     && (meSCS != nullptr || meSCV != nullptr || meFEM != nullptr);
 
@@ -105,9 +108,11 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
     : meSCV != nullptr ? meSCV->nodesPerElement_ 
     : meFEM != nullptr ? meFEM->nodesPerElement_
     : meFC  != nullptr ? meFC->nodesPerElement_
+    : meFCFEM != nullptr ? meFCFEM->nodesPerElement_
     : 0;
 
-  const int numFaceIp = meFC != nullptr ? meFC->numIntPoints_ : 0;
+  const int numFaceIp = meFC != nullptr ? meFC->numIntPoints_ 
+    : meFCFEM != nullptr ? meFCFEM->numIntPoints_ : 0;
   const int numScsIp = meSCS != nullptr ? meSCS->numIntPoints_ : 0;
   const int numScvIp = meSCV != nullptr ? meSCV->numIntPoints_ : 0;
   const int numFemIp = meFEM != nullptr ? meFEM->numIntPoints_ : 0;
@@ -136,9 +141,9 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
     int dndxLength = 0, dndxLengthFC = 0, gUpperLength = 0, gLowerLength = 0;
 
     // Updated logic for data sharing of deriv and det_j
-    bool needDeriv = false; bool needDerivScv = false; bool needDerivFem = false; bool needDerivFC = false;
-    bool needDetj = false; bool needDetjScv = false; bool needDetjFem = false; bool needDetjFC = false;
-
+    bool needDeriv = false; bool needDerivScv = false; bool needDerivFC = false;  bool needDerivFCElem = false;
+    bool needDetj = false; bool needDetjScv = false; bool needDetjFC = false;
+    bool needDerivFem = false;  bool needDetjFem = false; 
     for(ELEM_DATA_NEEDED data : dataEnums) {
       switch(data)
       {
@@ -151,7 +156,7 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
         case SCS_FACE_GRAD_OP:
         case SCS_SHIFTED_FACE_GRAD_OP:
           dndxLengthFC = nodesPerEntity*numFaceIp*nDim;
-          needDerivFC = true;
+          needDerivFCElem = true;
           needDetjFC = true;
           numScalars += dndxLengthFC;
           break;
@@ -166,6 +171,7 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
           numScalars += numScvIp;
           break;
         case SCV_GRAD_OP:
+        case SCV_SHIFTED_GRAD_OP:
           dndxLength = nodesPerEntity*numScvIp*nDim;
           needDerivScv = true;
           needDetjScv = true;
@@ -175,7 +181,7 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
           gUpperLength = nDim*nDim*numScsIp;
           gLowerLength = nDim*nDim*numScsIp;
           needDeriv = true;
-          numScalars += (gUpperLength + gLowerLength );
+          numScalars += (gUpperLength + gLowerLength);
           break;
         case FEM_GRAD_OP:
         case FEM_SHIFTED_GRAD_OP:
@@ -184,11 +190,45 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
           needDetjFem = true;
           numScalars += dndxLength;
           break;
-        default: break;
+        case FEM_DET_J:
+          needDerivFem = true;
+          needDetjFem = true;
+          break;
+        case FEM_NORMAL:
+          needDerivFem = true;
+          needDetjFem = true;
+          numScalars += nDim * numFemIp;
+          break;
+        case FEM_FACE_GRAD_OP:
+          needDerivFCElem = true;
+          needDetjFC = true;
+          numScalars += nodesPerEntity*numFaceIp*nDim;
+          break;
+        case FEM_FACE_DET_J:
+          needDerivFC = true;
+          needDetjFC = true;
+          break;
+        case FEM_FACE_NORMAL:
+          needDerivFC = true;
+          needDetjFC = true;
+          numScalars += nDim * numFaceIp;
+          break;
+        case FEM_GIJ:
+          gUpperLength = nDim*nDim*numFemIp;
+          gLowerLength = nDim*nDim*numFemIp;
+          needDerivFem = true;
+          numScalars += (gUpperLength + gLowerLength);
+          break;
+        default: 
+          ThrowRequireMsg(false, "get_num_scalars_pre_req_data: enum not coded " << data);
+          break;
       }
     }
 
     if (needDerivFC)
+      numScalars += nodesPerEntity*numFaceIp*nDim;
+
+    if (needDerivFCElem)
       numScalars += nodesPerEntity*numFaceIp*nDim;
 
     if (needDeriv)
@@ -196,10 +236,7 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
 
     if (needDerivScv)
       numScalars += nodesPerEntity*numScvIp*nDim;
-    
-    if (needDerivFem)
-      numScalars += nodesPerEntity*numFemIp*nDim;
-    
+        
     if (needDetjFC)
       numScalars += numFaceIp;
 
@@ -209,6 +246,9 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
     if (needDetjScv)
       numScalars += numScvIp;
     
+    if (needDerivFem)
+      numScalars += nodesPerEntity*numFemIp*nDim;
+
     if (needDetjFem)
       numScalars += numFemIp;
   }
@@ -249,9 +289,9 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
     int dndxLength = 0, dndxLengthFC = 0, gUpperLength = 0, gLowerLength = 0;
 
     // Updated logic for data sharing of deriv and det_j
-    bool needDeriv = false; bool needDerivScv = false; bool needDerivFem = false; bool needDerivFC = false;
-    bool needDetj = false; bool needDetjScv = false; bool needDetjFem = false; bool needDetjFC = false;
-
+    bool needDeriv = false; bool needDerivScv = false; bool needDerivFC = false; bool needDerivFCElem = false;
+    bool needDetj = false; bool needDetjScv = false; bool needDetjFC = false;
+    bool needDerivFem = false; bool needDetjFem = false; 
     for(ELEM_DATA_NEEDED data : dataEnums) {
       switch(data)
       {
@@ -264,7 +304,7 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
         case SCS_FACE_GRAD_OP:
         case SCS_SHIFTED_FACE_GRAD_OP:
           dndxLengthFC = nodesPerEntity*numFaceIp*nDim;
-          needDerivFC = true;
+          needDerivFCElem = true;
           needDetjFC = true;
           numScalars += dndxLengthFC;
           break;
@@ -279,6 +319,7 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
           numScalars += numScvIp;
           break;
         case SCV_GRAD_OP:
+        case SCV_SHIFTED_GRAD_OP:
           dndxLength = nodesPerEntity*numScvIp*nDim;
           needDerivScv = true;
           needDetjScv = true;
@@ -297,11 +338,44 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
           needDetjFem = true;
           numScalars += dndxLength;
           break;
-        default: break;
+        case FEM_DET_J:
+          needDerivFem = true;
+          needDetjFem = true;
+          break;
+        case FEM_NORMAL:
+          needDerivFem = true;
+          numScalars += nDim * numFemIp;
+          break;
+        case FEM_FACE_GRAD_OP:
+          needDerivFC = true;
+          needDetjFC = true;
+          numScalars += nodesPerEntity*numFaceIp*nDim;
+          break;
+        case FEM_FACE_DET_J:
+          needDerivFC = true;
+          needDetjFC = true;
+          break;
+        case FEM_FACE_NORMAL:
+          needDerivFC = true;
+          needDetjFC = true;
+          numScalars += nDim * numFaceIp;
+          break;
+        case FEM_GIJ:
+          gUpperLength = nDim*nDim*numFemIp;
+          gLowerLength = nDim*nDim*numFemIp;
+          needDerivFem = true;
+          numScalars += (gUpperLength + gLowerLength );
+          break;
+        default: 
+          ThrowRequireMsg(false, "get_num_scalars_pre_req_data: enum not coded " << data);
+          break;
       }
     }
 
     if (needDerivFC)
+      numScalars += nodesPerEntity*numFaceIp*nDim;
+
+    if (needDerivFCElem)
       numScalars += nodesPerEntity*numFaceIp*nDim;
 
     if (needDeriv)
@@ -309,9 +383,6 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
 
     if (needDerivScv)
       numScalars += nodesPerEntity*numScvIp*nDim;
-
-    if (needDerivFem)
-      numScalars += nodesPerEntity*numFemIp*nDim;
 
     if (needDetjFC)
       numScalars += numFaceIp;
@@ -322,6 +393,9 @@ int get_num_scalars_pre_req_data(ElemDataRequests& dataNeededBySuppAlgs, int nDi
     if (needDetjScv)
       numScalars += numScvIp;
 
+    if (needDerivFem)
+      numScalars += nodesPerEntity*numFemIp*nDim;
+    
     if (needDetjFem)
       numScalars += numFemIp;
   }
@@ -343,6 +417,7 @@ void fill_pre_req_data(
   MasterElement *meFC  = dataNeeded.get_cvfem_face_me();
   MasterElement *meSCS = dataNeeded.get_cvfem_surface_me();
   MasterElement *meSCV = dataNeeded.get_cvfem_volume_me();
+  MasterElement *meFCFEM = dataNeeded.get_fem_face_me();
   MasterElement *meFEM = dataNeeded.get_fem_volume_me();
   prereqData.elemNodes = bulkData.begin_nodes(elem);
 
@@ -359,7 +434,7 @@ void fill_pre_req_data(
       }
       else {
         SharedMemView<double*>& shmemView = prereqData.get_scratch_view_1D(*fieldInfo.field);
-        unsigned len = shmemView.dimension(0);
+        unsigned len = shmemView.extent(0);
         double* fieldDataPtr = static_cast<double*>(stk::mesh::field_data(*fieldInfo.field, elem));
         for(unsigned i=0; i<len; ++i) {
           shmemView(i) = fieldDataPtr[i];
@@ -403,7 +478,7 @@ void fill_pre_req_data(
       SharedMemView<double**>* coordsView = &prereqData.get_scratch_view_2D(*coordField);
       auto& meData = prereqData.get_me_views(cType);
   
-      meData.fill_master_element_views(dataEnums, coordsView, meFC, meSCS, meSCV, meFEM);
+      meData.fill_master_element_views(dataEnums, coordsView, meFC, meSCS, meSCV, meFCFEM, meFEM);
     }
   }
 }
@@ -418,6 +493,7 @@ void fill_master_element_views(
     MasterElement *meSCS = dataNeeded.get_cvfem_surface_me();
     MasterElement *meSCV = dataNeeded.get_cvfem_volume_me();
     MasterElement *meFEM = dataNeeded.get_fem_volume_me();
+    MasterElement *meFCFEM = dataNeeded.get_fem_face_me();
 
     for (auto it = dataNeeded.get_coordinates_map().begin();
          it != dataNeeded.get_coordinates_map().end(); ++it) {
@@ -428,7 +504,7 @@ void fill_master_element_views(
       SharedMemView<DoubleType**>* coordsView = &prereqData.get_scratch_view_2D(*coordField);
       auto& meData = prereqData.get_me_views(cType);
   
-      meData.fill_master_element_views_new_me(dataEnums, coordsView, meFC, meSCS, meSCV, meFEM, faceOrdinal);
+      meData.fill_master_element_views_new_me(dataEnums, coordsView, meFC, meSCS, meSCV, meFCFEM, meFEM, faceOrdinal);
     }
 }
 

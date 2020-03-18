@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -106,7 +104,6 @@ realms:
       target_name: [leftWall, rightWall]
       periodic_user_data:
         search_tolerance: 1.e-5
-        search_method: boost_rtree
 
     - symmetry_boundary_condition: bc_top
       target_name: topWall
@@ -172,11 +169,9 @@ realms:
           compute_reynolds_stress: yes
 
     output:
-      output_data_base_name: waleElemXflowMixFrac3.5.e
+      output_data_base_name: waleElemXflowMixFrac3.5m.e
       output_frequency: 1 
       output_node_set: no 
-#      compression_level: 9
-#      compression_shuffle: yes
       output_variables:
        - velocity
        - velocity_ra_one
@@ -190,7 +185,7 @@ realms:
        - reynolds_stress
 
     restart:
-      restart_data_base_name: waleElemXflowMixFrac3.5.rst
+      restart_data_base_name: waleElemXflowMixFrac3.5m.rst
       output_frequency: 2000
 
 Time_Integrators:

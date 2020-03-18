@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -113,6 +111,7 @@ realms:
       shift_cvfem_mdot: yes
 
       use_consolidated_solver_algorithm: yes
+      use_consolidated_face_elem_solver_algorithm: yes
 
       options:
         - hybrid_factor:

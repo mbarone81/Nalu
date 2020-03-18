@@ -10,18 +10,12 @@
 #include <master_element/MasterElementFunctions.h>
 #include <master_element/Quad42DCVFEM.h>
 
-#include <master_element/MasterElementHO.h>
-#include <master_element/MasterElementUtils.h>
-
-#include <element_promotion/LagrangeBasis.h>
-#include <element_promotion/TensorProductQuadratureRule.h>
-#include <element_promotion/QuadratureRule.h>
 #include <AlgTraits.h>
 
 #include <NaluEnv.h>
 #include <FORTRAN_Proto.h>
 
-#include <stk_util/environment/ReportHandler.hpp>
+#include <stk_util/util/ReportHandler.hpp>
 #include <stk_topology/topology.hpp>
 
 #include <iostream>
@@ -39,7 +33,7 @@ namespace nalu{
 void quad_derivative(const std::vector<double> &par_coord, 
                      SharedMemView<DoubleType***>& deriv) {
   const double half = 0.5;
-  const size_t npts = deriv.dimension(0);
+  const size_t npts = deriv.extent(0);
 
   for(size_t j=0; j<npts; ++j) {
     const DoubleType s1 = par_coord[2*j+0];
@@ -250,6 +244,45 @@ void Quad42DSCV::determinant(
 }
 
 //--------------------------------------------------------------------------
+//-------- shifted_grad_op -------------------------------------------------
+//--------------------------------------------------------------------------
+void Quad42DSCV::shifted_grad_op(
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop,
+  SharedMemView<DoubleType***>& deriv) {
+
+  quad_derivative(intgLocShift_, deriv);
+  quad_gradient_operator<Traits::numScsIp_, Traits::nodesPerElement_>(deriv, coords, gradop);
+}
+
+//--------------------------------------------------------------------------
+//-------- grad_op ---------------------------------------------------------
+//--------------------------------------------------------------------------
+void Quad42DSCV::grad_op(
+  const int nelem,
+  const double *coords,
+  double *gradop,
+  double *deriv,
+  double *det_j,
+  double *error)
+{
+  int lerr = 0;
+
+  SIERRA_FORTRAN(quad_derivative)
+    ( &numIntPoints_, &intgLoc_[0], deriv );
+  
+  SIERRA_FORTRAN(quad_gradient_operator)
+    ( &nelem,
+      &nodesPerElement_,
+      &numIntPoints_,
+      deriv,
+      coords, gradop, det_j, error, &lerr );
+  
+  if ( lerr )
+    NaluEnv::self().naluOutput() << "sorry, negative Quad42DSCV volume.." << std::endl;
+}
+
+//--------------------------------------------------------------------------
 //-------- shape_fcn -------------------------------------------------------
 //--------------------------------------------------------------------------
 void
@@ -268,7 +301,7 @@ Quad42DSCV::shifted_shape_fcn(double *shpfc)
 }
 
 //--------------------------------------------------------------------------
-//-------- quad_shape_fcn ---------------------------------------------------
+//-------- quad_shape_fcn --------------------------------------------------
 //--------------------------------------------------------------------------
 void
 Quad42DSCV::quad_shape_fcn(
@@ -306,6 +339,11 @@ Quad42DSCS::Quad42DSCS()
   lrscv_[4]  = 2; lrscv_[5]  = 3;
   lrscv_[6]  = 0; lrscv_[7]  = 3;
   
+  // elem-edge mapping from ip
+  scsIpEdgeOrd_.resize(numIntPoints_);
+  scsIpEdgeOrd_[0] = 0; scsIpEdgeOrd_[1] = 1;
+  scsIpEdgeOrd_[2] = 2; scsIpEdgeOrd_[3] = 3;
+
   // define opposing node
   oppNode_.resize(8);
   // face 0; nodes 0,1
@@ -516,6 +554,9 @@ void Quad42DSCS::grad_op(
   quad_gradient_operator<Traits::numScsIp_, Traits::nodesPerElement_>(deriv, coords, gradop);
 }
 
+//--------------------------------------------------------------------------
+//-------- grad_op ---------------------------------------------------------
+//--------------------------------------------------------------------------
 void Quad42DSCS::grad_op(
   const int nelem,
   const double *coords,
@@ -579,6 +620,33 @@ void Quad42DSCS::shifted_grad_op(
 //-------- face_grad_op ----------------------------------------------------
 //--------------------------------------------------------------------------
 void Quad42DSCS::face_grad_op(
+  const int face_ordinal,
+  const bool shifted,
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop)
+{
+  using traits = AlgTraitsEdge2DQuad42D;
+
+  const std::vector<double> &p = shifted ? intgExpFaceShift_: intgExpFace_;
+  constexpr int derivSize = traits::numFaceIp_ * traits::nodesPerElement_ * traits::nDim_;
+  DoubleType psi[derivSize];
+  SharedMemView<DoubleType***> deriv(psi, traits::numFaceIp_, traits::nodesPerElement_, traits::nDim_);
+  const int len = 2*traits::numFaceIp_;
+  const std::vector<double> exp_face(&p[len*face_ordinal], &p[len*(face_ordinal+1)]);
+  quad_derivative(exp_face, deriv);
+  generic_grad_op<traits>(deriv, coords, gradop);
+}
+
+void Quad42DSCS::face_grad_op(
+  int face_ordinal,
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop)
+{
+  constexpr bool shifted = false;
+  face_grad_op(face_ordinal, shifted, coords, gradop);
+}
+
+void Quad42DSCS::face_grad_op(
   const int nelem,
   const int face_ordinal,
   const double *coords,
@@ -618,6 +686,15 @@ void Quad42DSCS::face_grad_op(
 //--------------------------------------------------------------------------
 //-------- shifted_face_grad_op --------------------------------------------
 //--------------------------------------------------------------------------
+void Quad42DSCS::shifted_face_grad_op(
+  int face_ordinal,
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop)
+{
+  constexpr bool shifted = true;
+  face_grad_op(face_ordinal, shifted, coords, gradop);
+}
+
 void Quad42DSCS::shifted_face_grad_op(
   const int nelem,
   const int face_ordinal,
@@ -725,6 +802,15 @@ Quad42DSCS::adjacentNodes()
 {
   // define L/R mappings
   return &lrscv_[0];
+}
+
+//--------------------------------------------------------------------------
+//-------- scsIpEdgeOrd ----------------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+Quad42DSCS::scsIpEdgeOrd()
+{
+  return &scsIpEdgeOrd_[0];
 }
 
 //--------------------------------------------------------------------------

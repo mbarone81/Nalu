@@ -130,6 +130,8 @@ void TimeIntegrator::breadboard()
 {
   for (size_t irealm = 0; irealm < realmNamesVec_.size(); ++irealm) {
     Realm * realm = sim_->realms_->find_realm(realmNamesVec_[irealm]);
+    if ( NULL == realm )
+      throw std::runtime_error("TimeIntegrator::breadboard()::Error: Unknown realm: " + realmNamesVec_[irealm]);
     realm->timeIntegrator_ = this;
     realmVec_.push_back(realm);
   }
@@ -220,9 +222,11 @@ TimeIntegrator::integrate_realm()
     (*ii)->initial_work();
   }
 
-  // provide for initial transfer
+  // provide for initial multi-physics transfer if restart
   for ( ii = realmVec_.begin(); ii!=realmVec_.end(); ++ii) {
-    (*ii)->process_multi_physics_transfer();
+    if ( (*ii)->restarted_simulation() ) {
+      (*ii)->process_multi_physics_transfer(true);
+    }
   }
 
   // provide output/restart for initial condition
@@ -343,17 +347,18 @@ TimeIntegrator::provide_mean_norm()
   // provide integrated norm
   std::vector<Realm *>::iterator ii;
   double sumNorm = 0.0;
-  double realmIncrement = 0.0;
+  int realmIncrement = 0;
   for ( ii = realmVec_.begin(); ii!=realmVec_.end(); ++ii) {
     if ( (*ii)->type_ == "multi_physics" ) { 
       // only increment for a "real" realm
       sumNorm += (*ii)->provide_mean_norm();
-      realmIncrement += 1.0;
+      realmIncrement += 1;
     }
   }
+  realmIncrement = std::max(1,realmIncrement);
   NaluEnv::self().naluOutputP0() << "Mean System Norm: "
-      << std::setprecision(16) << sumNorm/realmIncrement << " "
-      << std::setprecision(6) << timeStepCount_ << " " << currentTime_ << std::endl;
+                                 << std::setprecision(16) << sumNorm/double(realmIncrement) << " "
+                                 << std::setprecision(6) << timeStepCount_ << " " << currentTime_ << std::endl;
 }
 
 //--------------------------------------------------------------------------

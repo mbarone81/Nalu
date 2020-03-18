@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -71,7 +69,7 @@ realms:
     - inflow_boundary_condition: bc_inflow
       target_name: surface_1
       inflow_user_data:
-        velocity: [0.0,0.0,1.0]
+        velocity: [0.0,0.0,2.0]
 
     - open_boundary_condition: bc_open
       target_name: surface_2
@@ -87,9 +85,10 @@ realms:
 
     solution_options:
       name: myOptions
-      turbulence_model: laminar
+      turbulence_model: wale
 
       use_consolidated_solver_algorithm: yes
+      use_consolidated_face_elem_bc_algorithm: yes
 
       options:
       

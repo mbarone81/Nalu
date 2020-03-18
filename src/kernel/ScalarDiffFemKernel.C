@@ -7,7 +7,7 @@
 
 #include "kernel/ScalarDiffFemKernel.h"
 #include "AlgTraits.h"
-#include "master_element/Hex8FEM.h"
+#include "master_element/MasterElement.h"
 #include "SolutionOptions.h"
 
 // template and scratch space
@@ -31,27 +31,28 @@ ScalarDiffFemKernel<AlgTraits>::ScalarDiffFemKernel(
   ScalarFieldType* diffFluxCoeff,
   ElemDataRequests& dataPreReqs)
   : Kernel(),
-    bulkData_(&bulkData),
     scalarQ_(scalarQ),
     diffFluxCoeff_(diffFluxCoeff),
-    meFEM_(new Hex8FEM()),
-    ipWeight_(&meFEM_->weights_[0]),
     shiftedGradOp_(solnOpts.get_shifted_grad_op(scalarQ_->name()))
 {
-  ThrowRequireMsg(AlgTraits::topo_ == stk::topology::HEX_8,
-                  "FEM_DIFF only available for hexes currently");
-
   // Save of required fields
   const stk::mesh::MetaData& metaData = bulkData.mesh_meta_data();
-  coordinates_ = metaData.get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
+  coordinates_ = metaData.get_field<VectorFieldType>(stk::topology::NODE_RANK, solnOpts.get_coordinates_name());
 
+  // extract master element
+  MasterElement *meFEM = sierra::nalu::MasterElementRepo::get_fem_master_element(AlgTraits::topo_);
+  
+  // copy ip weights into our 1-d view
+  for ( int k = 0; k < AlgTraits::numGp_; ++k )
+    v_ip_weight_[k] = meFEM->weights_[k];
+  
   // master element, shape function is shifted consistently
   if ( shiftedGradOp_ )
-    get_fem_shape_fn_data<AlgTraits>([&](double* ptr){meFEM_->shifted_shape_fcn(ptr);}, v_shape_function_);
+    get_fem_shape_fn_data<AlgTraits>([&](double* ptr){meFEM->shifted_shape_fcn(ptr);}, v_shape_function_);
   else
-    get_fem_shape_fn_data<AlgTraits>([&](double* ptr){meFEM_->shape_fcn(ptr);}, v_shape_function_);
+    get_fem_shape_fn_data<AlgTraits>([&](double* ptr){meFEM->shape_fcn(ptr);}, v_shape_function_);
 
-  dataPreReqs.add_fem_volume_me(meFEM_);
+  dataPreReqs.add_fem_volume_me(meFEM);
 
   // fields and data
   dataPreReqs.add_coordinates_field(*coordinates_, AlgTraits::nDim_, CURRENT_COORDINATES);
@@ -66,7 +67,7 @@ ScalarDiffFemKernel<AlgTraits>::ScalarDiffFemKernel(
 template<typename AlgTraits>
 ScalarDiffFemKernel<AlgTraits>::~ScalarDiffFemKernel()
 {
-  delete meFEM_;
+  // does nothing
 }
 
 template<typename AlgTraits>
@@ -92,8 +93,8 @@ ScalarDiffFemKernel<AlgTraits>::execute(
     }
 
     // start the assembly
-    const DoubleType ipFactor = v_det_j(ip)*ipWeight_[ip];
-
+    const DoubleType ipFactor = v_det_j(ip)*v_ip_weight_(ip);
+    
     // row ir
     for ( int ir = 0; ir < AlgTraits::nodesPerElement_; ++ir) {
 
@@ -104,18 +105,18 @@ ScalarDiffFemKernel<AlgTraits>::execute(
         DoubleType lhsSum = 0.0;
         DoubleType scalarQ = v_scalarQ(ic);
         for ( int j = 0; j < AlgTraits::nDim_; ++j ) {
-          const DoubleType fac = v_dndx(ip,ir,j)*diffFluxCoeffIp*v_dndx(ip,ic,j);
+          const DoubleType fac = v_dndx(ip,ir,j)*v_dndx(ip,ic,j);
           lhsSum += fac;
           rhsSum += fac*scalarQ;
         }
-        lhs(ir,ic) += lhsSum*ipFactor;
+        lhs(ir,ic) += lhsSum*diffFluxCoeffIp*ipFactor;
       }
-      rhs(ir) -= rhsSum*ipFactor;
+      rhs(ir) -= rhsSum*diffFluxCoeffIp*ipFactor;
     }
   }
 }
 
-INSTANTIATE_KERNEL(ScalarDiffFemKernel);
+INSTANTIATE_FEM_KERNEL(ScalarDiffFemKernel);
 
 }  // nalu
 }  // sierra

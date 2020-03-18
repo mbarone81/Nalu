@@ -162,13 +162,6 @@ struct NormalTemperatureGradient {
   {}
 };
 
-struct RoughnessHeight {
-  double z0_;
-  RoughnessHeight()
-    :  z0_(0.1)
-  {}
-};
-
 struct MasterSlave {
   std::string master_;
   std::string slave_;
@@ -191,13 +184,11 @@ struct WallUserData : public UserData {
   HeatTransferCoefficient heatTransferCoefficient_;
   RobinCouplingParameter robinCouplingParameter_;
   Pressure pressure_;
-  unsigned gravityComponent_;
-  RoughnessHeight z0_;
-  
-  
+    
   bool isAdiabatic_;
   bool heatFluxSpec_;
   bool isInterface_;
+  bool ppHeatFlux_;
   bool refTempSpec_;
   bool htcSpec_;
   bool robinParameterSpec_;
@@ -205,22 +196,24 @@ struct WallUserData : public UserData {
   bool emissSpec_;
 
   bool wallFunctionApproach_;
-  bool ablWallFunctionApproach_;
+  bool wallFunctionProjectedApproach_;
+  double projectedDistance_;
 
   bool isFsiInterface_;
 
   WallUserData()
     : UserData(),
-      gravityComponent_(3),
       isAdiabatic_(false),
       heatFluxSpec_(false),
       isInterface_(false),
+      ppHeatFlux_(false),
       refTempSpec_(false),
       htcSpec_(false),
       robinParameterSpec_(false),
       irradSpec_(false),
       wallFunctionApproach_(false),
-      ablWallFunctionApproach_(false),
+      wallFunctionProjectedApproach_(false),
+      projectedDistance_(1.0),
       isFsiInterface_(false) {}    
 };
 
@@ -256,10 +249,12 @@ struct OpenUserData : public UserData {
   bool sdrSpec_;
   bool mixFracSpec_;
   bool massFractionSpec_;
+  
+  bool useTotalP_;
 
   OpenUserData()
     : UserData(),
-      uSpec_(false), pSpec_(false), tkeSpec_(false), sdrSpec_(false), mixFracSpec_(false), massFractionSpec_(false)
+    uSpec_(false), pSpec_(false), tkeSpec_(false), sdrSpec_(false), mixFracSpec_(false), massFractionSpec_(false), useTotalP_(false)
   {}
 };
 
@@ -269,6 +264,7 @@ struct OversetUserData : public UserData {
 
   /// Percentage overlap between background and interior mesh
   double percentOverlap_;
+  double percentOverlapInner_;
   bool clipIsoParametricCoords_;
   bool detailedOutput_;
   /// Part name for the background  mesh
@@ -281,6 +277,10 @@ struct OversetUserData : public UserData {
   /// Part name for the inactive elements on the background mesh as a result of
   /// hole cutting.
   std::string backgroundCutBlock_;
+
+  /// Part name for the inner inactive elements on the background mesh as a result of
+  /// hole cutting.
+  std::string backgroundInnerBlock_;
 
   /// Exterior boundary of the internal meshe(s) that are mandatory receptors
   std::string oversetSurface_;
@@ -295,11 +295,13 @@ struct OversetUserData : public UserData {
   OversetUserData()
     : UserData(),
       percentOverlap_(10.0),
+      percentOverlapInner_(20.0),
       clipIsoParametricCoords_(false),
       detailedOutput_(false),
       backgroundBlock_("na"),
       backgroundSurface_("na"),
       backgroundCutBlock_("na"),
+      backgroundInnerBlock_("na"),
       oversetSurface_("na")
   {}
 };
@@ -566,10 +568,6 @@ template<> struct convert<sierra::nalu::RobinCouplingParameter> {
 
 template<> struct convert<sierra::nalu::UserData> {
   static bool decode(const Node& node, sierra::nalu::UserData& rhs) ;
-};
-
-template<> struct convert<sierra::nalu::RoughnessHeight> {
- static bool decode(const Node& node, sierra::nalu::RoughnessHeight& z0) ;
 };
 
 template<> struct convert<sierra::nalu::NormalHeatFlux> {

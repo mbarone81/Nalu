@@ -6,9 +6,9 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <property_evaluator/PropertyEvaluator.h>
-#include <property_evaluator/SutherlandsPropertyEvaluator.h>
-#include <property_evaluator/ReferencePropertyData.h>
+#include "property_evaluator/PropertyEvaluator.h"
+#include "property_evaluator/SutherlandsPropertyEvaluator.h"
+#include "property_evaluator/ReferencePropertyData.h"
 
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/BulkData.hpp>
@@ -23,49 +23,55 @@ namespace nalu{
 //==========================================================================
 // Class Definition
 //==========================================================================
-// SutherlandsPropertyEvaluator - evaluates mu based on temperature; Ykref
+// SutherlandsPropertyEvaluator - base class
 //==========================================================================
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
 SutherlandsPropertyEvaluator::SutherlandsPropertyEvaluator(
-    const std::map<std::string, ReferencePropertyData*> &referencePropertyDataMap,
-    const std::map<std::string, std::vector<double> > &polynomialCoeffsMap )
-  : PropertyEvaluator()
+  const std::map<std::string, ReferencePropertyData*> &referencePropertyDataMap,
+  const std::map<std::string, std::vector<double> > &polynomialCoeffsMap)
+  : PropertyEvaluator(),
+    ykVecSize_(referencePropertyDataMap.size())
 {
   // extract the reference property data size
-   size_t refPropSize = referencePropertyDataMap.size();
+  size_t polySize = polynomialCoeffsMap.size();
+  size_t propSize = referencePropertyDataMap.size();
 
-   // resize reference mass fraction and polynomial size
-   refMassFraction_.resize(refPropSize);
-   polynomialCoeffs_.resize(refPropSize);
+  // sanity check to ensure that reference and polynomialCoeffs size matches
+  if ( polySize != propSize )
+    throw std::runtime_error("Sutherlands reference and polynomial coeffs size do not match:");
 
-   // increment on iterator
-   size_t k = 0;
+  // resize all data members 
+  polynomialCoeffs_.resize(polySize);
+  refMassFraction_.resize(propSize);
+  moleFraction_.resize(propSize);
+  refMW_.resize(propSize);
 
-   // save off reference values for yk
-   std::map<std::string, ReferencePropertyData*>::const_iterator itrp;
-   for ( itrp = referencePropertyDataMap.begin();
-         itrp!= referencePropertyDataMap.end(); ++itrp, ++k) {
-     ReferencePropertyData *propData = (*itrp).second;
-     refMassFraction_[k] = propData->massFraction_;
-   }
-
-   // save off polynomial coeffs
-   k = 0;
-   std::map<std::string, std::vector<double> >::const_iterator itpc;
-   for ( itpc = polynomialCoeffsMap.begin();
-         itpc!= polynomialCoeffsMap.end(); ++itpc, ++k) {
-     std::vector<double> polyVec= (*itpc).second;
-     size_t polyVecSize = polyVec.size();
-     if ( polyVecSize < 3)
-       throw std::runtime_error("Sutherlands polynomial evaluator needs three coeffs:");
-     polynomialCoeffs_[k].resize(polyVecSize);
-     double *pt_poly = &polynomialCoeffs_[k][0];
-     for ( size_t j = 0; j < polyVecSize; ++j ) {
-       pt_poly[j] = polyVec[j];
+  // save off polynomial coeffs
+  size_t k = 0;
+  std::map<std::string, std::vector<double> >::const_iterator itpc;
+  for ( itpc = polynomialCoeffsMap.begin();
+        itpc!= polynomialCoeffsMap.end(); ++itpc, ++k) {
+    std::vector<double> polyVec= (*itpc).second;
+    size_t polyVecSize = polyVec.size();
+    if ( polyVecSize < 3)
+      throw std::runtime_error("Sutherlands polynomial evaluator needs three coeffs:");
+    polynomialCoeffs_[k].resize(polyVecSize);
+    double *pt_poly = &polynomialCoeffs_[k][0];
+    for ( size_t j = 0; j < polyVecSize; ++j ) {
+      pt_poly[j] = polyVec[j];
     }
-   }
+  }
+
+  // save off reference  molecular weights
+  k = 0;
+  std::map<std::string, ReferencePropertyData*>::const_iterator itrp;
+  for ( itrp = referencePropertyDataMap.begin();
+        itrp!= referencePropertyDataMap.end(); ++itrp, ++k) {
+    ReferencePropertyData *propData = (*itrp).second;
+    refMW_[k] = propData->mw_;
+  }
 }
 
 //--------------------------------------------------------------------------
@@ -77,23 +83,39 @@ SutherlandsPropertyEvaluator::~SutherlandsPropertyEvaluator()
 }
 
 //--------------------------------------------------------------------------
-//-------- execute ---------------------------------------------------------
+//-------- set_reference_mass_fraction -------------------------------------
 //--------------------------------------------------------------------------
-double
-SutherlandsPropertyEvaluator::execute(
-    double *indVarList,
-    stk::mesh::Entity /*node*/)
+void
+SutherlandsPropertyEvaluator::set_reference_mass_fraction(
+  const std::map<std::string, ReferencePropertyData*> &referencePropertyDataMap)
 {
-  const double T = indVarList[0];
-
-  // extract size and process sum
-  const size_t ykSize = refMassFraction_.size();
-  double sum_mu = 0.0;
-  for ( size_t k = 0; k < ykSize; ++k ) {
-    sum_mu += refMassFraction_[k]*compute_viscosity(T, &polynomialCoeffs_[k][0]);
+  // save off reference values for Yk
+  size_t k = 0;
+  std::map<std::string, ReferencePropertyData*>::const_iterator itrp;
+  for ( itrp = referencePropertyDataMap.begin();
+        itrp!= referencePropertyDataMap.end(); ++itrp, ++k) {
+    ReferencePropertyData *propData = (*itrp).second;
+    refMassFraction_[k] = propData->massFraction_;
   }
 
-  return sum_mu;
+  // convert to mole fraction
+  mole_fraction_from_mass_fraction(&refMW_[0], &refMassFraction_[0], &moleFraction_[0]);
+}
+
+//--------------------------------------------------------------------------
+//-------- mole_fraction_from_mass_fraction --------------------------------
+//--------------------------------------------------------------------------
+void
+SutherlandsPropertyEvaluator::mole_fraction_from_mass_fraction(
+  const double *mw, const double *massFraction, double *moleFraction)
+{
+  double totalMole = 0.0;
+  for ( size_t k = 0; k < ykVecSize_; ++k )
+    totalMole += massFraction[k]/mw[k];
+
+  // compute mole fraction; assumes massFraction is monotonic
+  for ( size_t k = 0; k < ykVecSize_; ++k )
+    moleFraction[k] = massFraction[k]/mw[k]/totalMole;
 }
 
 //--------------------------------------------------------------------------
@@ -101,8 +123,8 @@ SutherlandsPropertyEvaluator::execute(
 //--------------------------------------------------------------------------
 double
 SutherlandsPropertyEvaluator::compute_viscosity(
-    const double &T,
-    const double *pt_poly)
+  const double &T,
+  const double *pt_poly)
 {
   const double muRef = pt_poly[0];
   const double TRef = pt_poly[1];
@@ -114,40 +136,67 @@ SutherlandsPropertyEvaluator::compute_viscosity(
 //==========================================================================
 // Class Definition
 //==========================================================================
+// SutherlandsYkrefPropertyEvaluator - evaluates mu based on temperature; Ykref
+//==========================================================================
+//--------------------------------------------------------------------------
+//-------- constructor -----------------------------------------------------
+//--------------------------------------------------------------------------
+SutherlandsYkrefPropertyEvaluator::SutherlandsYkrefPropertyEvaluator(
+  const std::map<std::string, ReferencePropertyData*> &referencePropertyDataMap,
+  const std::map<std::string, std::vector<double> > &polynomialCoeffsMap)
+  : SutherlandsPropertyEvaluator(referencePropertyDataMap, polynomialCoeffsMap)
+{
+  // set reference Yk
+  set_reference_mass_fraction(referencePropertyDataMap);
+}
+
+//--------------------------------------------------------------------------
+//-------- destructor ------------------------------------------------------
+//--------------------------------------------------------------------------
+SutherlandsYkrefPropertyEvaluator::~SutherlandsYkrefPropertyEvaluator()
+{
+  // nothing
+}
+
+//--------------------------------------------------------------------------
+//-------- execute ---------------------------------------------------------
+//--------------------------------------------------------------------------
+double
+SutherlandsYkrefPropertyEvaluator::execute(
+  double *indVarList,
+  stk::mesh::Entity /*node*/)
+{
+  const double T = indVarList[0];
+  
+  // Herning and Zipperer
+  double sumTop = 0.0;
+  double sumBot = 0.0;
+  for ( size_t k = 0; k < ykVecSize_; ++k ) {
+    const double sqrtMW = std::sqrt(refMW_[k]);
+    sumTop += compute_viscosity(T,&polynomialCoeffs_[k][0])*moleFraction_[k]*sqrtMW;
+    sumBot += moleFraction_[k]*sqrtMW;
+  }
+
+  return sumTop/sumBot;
+}
+
+//==========================================================================
+// Class Definition
+//==========================================================================
 // SutherlandsYkPropertyEvaluator - evaluates mu based on temperature; Yk
 //==========================================================================
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
 SutherlandsYkPropertyEvaluator::SutherlandsYkPropertyEvaluator(
-    const std::map<std::string, std::vector<double> > &polynomialCoeffsMap,
-    stk::mesh::MetaData &metaData)
-  : PropertyEvaluator(),
-    massFraction_(NULL),
-    ykVecSize_(0)
-{
-  // sizing
-  ykVecSize_ = polynomialCoeffsMap.size();
-  polynomialCoeffs_.resize(ykVecSize_);
-
+  const std::map<std::string, ReferencePropertyData*> &referencePropertyDataMap,
+  const std::map<std::string, std::vector<double> > &polynomialCoeffsMap,
+  stk::mesh::MetaData &metaData)
+  : SutherlandsPropertyEvaluator(referencePropertyDataMap, polynomialCoeffsMap),
+    massFraction_(NULL)
+{ 
   // save off mass fraction field
   massFraction_ = metaData.get_field<GenericFieldType>(stk::topology::NODE_RANK, "mass_fraction");
-
-  // save off polynomial coeffs
-  size_t k = 0;
-  std::map<std::string, std::vector<double> >::const_iterator itpc;
-  for ( itpc = polynomialCoeffsMap.begin();
-        itpc!= polynomialCoeffsMap.end(); ++itpc, ++k) {
-    std::vector<double> polyVec= (*itpc).second;
-    size_t polyVecSize = polyVec.size();
-    if ( polyVecSize != 3)
-      throw std::runtime_error("viscosity polynomial evaluator needs 3 coeffs:");
-    polynomialCoeffs_[k].resize(polyVecSize);
-    double *pt_poly = &polynomialCoeffs_[k][0];
-    for ( size_t j = 0; j < polyVecSize; ++j ) {
-      pt_poly[j] = polyVec[j];
-    }
-  }
 }
 
 //--------------------------------------------------------------------------
@@ -163,34 +212,25 @@ SutherlandsYkPropertyEvaluator::~SutherlandsYkPropertyEvaluator()
 //--------------------------------------------------------------------------
 double
 SutherlandsYkPropertyEvaluator::execute(
-    double *indVarList,
-    stk::mesh::Entity node)
+  double *indVarList,
+  stk::mesh::Entity node)
 {
   const double T = indVarList[0];
   const double *massFraction = stk::mesh::field_data(*massFraction_, node);
 
-  // process sum
-  double sum_mu = 0.0;
-  for ( size_t k = 0; k < ykVecSize_; ++k ) {
-    sum_mu += massFraction[k]*compute_viscosity(T, &polynomialCoeffs_[k][0]);
-  }
-
-  return sum_mu;
-}
-
-//--------------------------------------------------------------------------
-//-------- compute_viscosity -----------------------------------------------
-//--------------------------------------------------------------------------
-double
-SutherlandsYkPropertyEvaluator::compute_viscosity(
-    const double &T,
-    const double *pt_poly)
-{
-  const double muRef = pt_poly[0];
-  const double TRef = pt_poly[1];
-  const double SRef = pt_poly[2];
+  // populate mole fractions (stored in reference data member)
+  mole_fraction_from_mass_fraction(&refMW_[0], massFraction, &moleFraction_[0]);
   
-  return muRef*std::pow(T/TRef, 1.5)*(TRef+SRef)/(T+SRef);
+  // Herning and Zipperer
+  double sumTop = 0.0;
+  double sumBot = 0.0;
+  for ( size_t k = 0; k < ykVecSize_; ++k ) {
+    const double sqrtMW = std::sqrt(refMW_[k]);
+    sumTop += compute_viscosity(T,&polynomialCoeffs_[k][0])*moleFraction_[k]*sqrtMW;
+    sumBot += moleFraction_[k]*sqrtMW;
+  }
+  
+  return sumTop/sumBot;
 }
 
 //==========================================================================
@@ -202,13 +242,15 @@ SutherlandsYkPropertyEvaluator::compute_viscosity(
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
 SutherlandsYkTrefPropertyEvaluator::SutherlandsYkTrefPropertyEvaluator(
-    const std::map<std::string, std::vector<double> > &polynomialCoeffsMap,
-    stk::mesh::MetaData &metaData,
-    const double tRef)
-  : SutherlandsYkPropertyEvaluator(polynomialCoeffsMap, metaData),
+  const std::map<std::string, ReferencePropertyData*> &referencePropertyDataMap,
+  const std::map<std::string, std::vector<double> > &polynomialCoeffsMap,
+  stk::mesh::MetaData &metaData,
+  const double tRef)
+  : SutherlandsPropertyEvaluator(referencePropertyDataMap, polynomialCoeffsMap),
     tRef_(tRef)
-{
-  // base class handles everything that is required
+{  
+  // save off mass fraction field
+  massFraction_ = metaData.get_field<GenericFieldType>(stk::topology::NODE_RANK, "mass_fraction");
 }
 
 //--------------------------------------------------------------------------
@@ -224,20 +266,72 @@ SutherlandsYkTrefPropertyEvaluator::~SutherlandsYkTrefPropertyEvaluator()
 //--------------------------------------------------------------------------
 double
 SutherlandsYkTrefPropertyEvaluator::execute(
-    double */*indVarList*/,
-    stk::mesh::Entity node)
+  double */*indVarList*/,
+  stk::mesh::Entity node)
 {
-  const double T = tRef_;
   const double *massFraction = stk::mesh::field_data(*massFraction_, node);
-
-  // process sum
-  double sum_mu = 0.0;
+  
+  // populate mole fractions (stored in reference datastructure
+  mole_fraction_from_mass_fraction(&refMW_[0], massFraction, &moleFraction_[0]);
+  
+  // Herning and Zipperer
+  double sumTop = 0.0;
+  double sumBot = 0.0;
   for ( size_t k = 0; k < ykVecSize_; ++k ) {
-    sum_mu += massFraction[k]*compute_viscosity(T, &polynomialCoeffs_[k][0]);
+    const double sqrtMW = std::sqrt(refMW_[k]);
+    sumTop += compute_viscosity(tRef_,&polynomialCoeffs_[k][0])*moleFraction_[k]*sqrtMW;
+    sumBot += moleFraction_[k]*sqrtMW;
   }
-
-  return sum_mu;
+ 
+  return sumTop/sumBot;
 }
 
+//==========================================================================
+// Class Definition
+//==========================================================================
+// SutherlandsYkrefTrefPropertyEvaluator - evaluates mu based on reference
+//==========================================================================
+//--------------------------------------------------------------------------
+//-------- constructor -----------------------------------------------------
+//--------------------------------------------------------------------------
+SutherlandsYkrefTrefPropertyEvaluator::SutherlandsYkrefTrefPropertyEvaluator(
+  const std::map<std::string, ReferencePropertyData*> &referencePropertyDataMap,
+  const std::map<std::string, std::vector<double> > &polynomialCoeffsMap,
+  const double tRef)
+  : SutherlandsPropertyEvaluator(referencePropertyDataMap, polynomialCoeffsMap),
+    tRef_(tRef)
+{
+  // set reference Yk
+  set_reference_mass_fraction(referencePropertyDataMap);
+}
+
+//--------------------------------------------------------------------------
+//-------- destructor ------------------------------------------------------
+//--------------------------------------------------------------------------
+SutherlandsYkrefTrefPropertyEvaluator::~SutherlandsYkrefTrefPropertyEvaluator()
+{
+  // nothing
+}
+
+//--------------------------------------------------------------------------
+//-------- execute ---------------------------------------------------------
+//--------------------------------------------------------------------------
+double
+SutherlandsYkrefTrefPropertyEvaluator::execute(
+  double */*indVarList*/,
+  stk::mesh::Entity /*node*/)
+{
+  // Herning and Zipperer
+  double sumTop = 0.0;
+  double sumBot = 0.0;
+  for ( size_t k = 0; k < ykVecSize_; ++k ) {
+    const double sqrtMW = std::sqrt(refMW_[k]);
+    sumTop += compute_viscosity(tRef_,&polynomialCoeffs_[k][0])*moleFraction_[k]*sqrtMW;
+    sumBot += moleFraction_[k]*sqrtMW;
+  }
+  
+  return sumTop/sumBot;
+}
+  
 } // namespace nalu
 } // namespace Sierra

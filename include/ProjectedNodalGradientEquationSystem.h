@@ -40,7 +40,8 @@ public:
     const std::string deltaName, 
     const std::string independentDofName,
     const std::string eqSysName,
-    const bool managesSolve = false);
+    const bool managesSolve = false,
+    const bool isFEM = false);
   virtual ~ProjectedNodalGradientEquationSystem();
 
   void set_data_map( 
@@ -75,10 +76,11 @@ public:
     const stk::topology &theTopo,
     const SymmetryBoundaryConditionData &symmetryBCData);
 
-  // not supported
   void register_non_conformal_bc(
     stk::mesh::Part *part,
     const stk::topology &theTopo);
+
+  void register_overset_bc();
 
   // internal solve and update from EquationSystems
   void solve_and_update();
@@ -100,6 +102,7 @@ public:
 
   // who manages the solve? Often times, this is created by another EqSys
   const bool managesSolve_;
+  const bool isFEM_;
 
   // for exach equation, boundary data may be different
   std::map<BoundaryConditionType, std::string> dataMap_;

@@ -28,19 +28,6 @@ class ParameterList;
 
 }
 
-namespace Tpetra {
-
-template <typename LocalOrdinal, typename GlobalOrdinal, typename Node>
-class Map;
-
-template <typename LocalOrdinal, typename GlobalOrdinal, typename Node >
-class Export;
-
-template <typename Scalar, typename LocalOrdinal, typename GlobalOrdinal, typename Node>
-class Operator;
-
-}
-
 namespace Belos {
 
 template <typename Scalar, typename MultiVector>
@@ -56,7 +43,8 @@ template <typename Scalar, typename MultiVector, typename Operator>
 class SolverManager;
 
 template <typename Scalar, typename MultiVector, typename Operator>
-class SolverFactory;
+class TpetraSolverFactory;
+
 }
 
 namespace Ifpack2 {
@@ -84,7 +72,7 @@ typedef Teuchos::MpiComm<int>                                              Comm;
 typedef Tpetra::Export< LocalOrdinal, GlobalOrdinal, Node >                Export;
 typedef Tpetra::Import< LocalOrdinal, GlobalOrdinal, Node >                Import;
 typedef Tpetra::CrsGraph< LocalOrdinal, GlobalOrdinal, Node>               Graph;
-typedef Tpetra::Map<LocalOrdinal,GlobalOrdinal,Node>                       Map;
+typedef Tpetra::Map<LocalOrdinal,GlobalOrdinal>                            Map;
 typedef Tpetra::MultiVector<Scalar,LocalOrdinal,GlobalOrdinal,Node>        MultiVector;
 typedef Teuchos::ArrayRCP<Scalar >                                         OneDVector;
 typedef Teuchos::ArrayRCP<const Scalar >                                   ConstOneDVector;
@@ -95,7 +83,7 @@ typedef Belos::MultiVecTraits<Scalar, MultiVector>                         Multi
 typedef Belos::OperatorTraits<Scalar,MultiVector, Operator>                OperatorTraits;
 typedef Belos::LinearProblem<Scalar, MultiVector, Operator>                LinearProblem;
 typedef Belos::SolverManager<Scalar, MultiVector, Operator>                SolverManager;
-typedef Belos::SolverFactory<Scalar, MultiVector, Operator>                SolverFactory;
+typedef Belos::TpetraSolverFactory<Scalar, MultiVector, Operator>          SolverFactory;
 typedef Ifpack2::Preconditioner<Scalar, LocalOrdinal, GlobalOrdinal, Node> Preconditioner;
 };
 

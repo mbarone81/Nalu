@@ -9,10 +9,7 @@
 
 #include <master_element/MasterElement.h>
 #include <master_element/MasterElementFunctions.h>
-#include <master_element/MasterElementUtils.h>
 #include <master_element/TensorOps.h>
-
-#include <element_promotion/QuadratureRule.h>
 
 #include <FORTRAN_Proto.h>
 
@@ -67,11 +64,10 @@ void
 HexahedralP2Element::set_quadrature_rule()
 {
   gaussAbscissaeShift_ = {-1.0,-1.0,0.0,0.0,+1.0,+1.0};
-
-  std::tie(gaussAbscissae_, gaussWeight_) = gauss_legendre_rule(numQuad_);
-  for (unsigned j = 0; j < gaussWeight_.size(); ++j) {
-    gaussWeight_[j] *= 0.5; // change from standard Gauss weights
-  }
+  gaussAbscissae_ = { -std::sqrt(3.0)/3.0, std::sqrt(3.0)/3.0 };
+  gaussWeight_ = { 0.5, 0.5 };
+  if ( numQuad_ != 2 )
+    throw std::runtime_error("Only 2x2 per scs face segnent is supported");
 }
 
 //--------------------------------------------------------------------------
@@ -336,6 +332,20 @@ HexahedralP2Element::eval_shape_derivs_at_face_ips()
     numIntPoints_,
     intgExpFace_.data(),
     expFaceShapeDerivs_.data()
+  );
+}
+
+//--------------------------------------------------------------------------
+//-------- eval_shape_derivs_at_shifted_face_ips ---------------------------
+//--------------------------------------------------------------------------
+void
+HexahedralP2Element::eval_shape_derivs_at_shifted_face_ips()
+{
+  expFaceShapeDerivsShift_.resize(numIntPoints_*nodesPerElement_*nDim_);
+  hex27_shape_deriv(
+    numIntPoints_,
+    intgExpFaceShift_.data(),
+    expFaceShapeDerivsShift_.data()
   );
 }
 
@@ -763,13 +773,31 @@ void Hex27SCV::grad_op(
   SharedMemView<DoubleType***>&gradop,
   SharedMemView<DoubleType***>&deriv)
 {
-  generic_grad_op_3d<AlgTraits>(referenceGradWeights_, coords, gradop);
+  generic_grad_op<AlgTraits>(referenceGradWeights_, coords, gradop);
 
   // copy derivs as well.  These aren't used, but are part of the interface
   for (int ip = 0; ip < AlgTraits::numScsIp_; ++ip) {
     for (int n = 0; n < AlgTraits::nodesPerElement_; ++n) {
       for (int d = 0; d < AlgTraits::nDim_; ++d) {
         deriv(ip,n,d) = referenceGradWeights_(ip,n,d);
+      }
+    }
+  }
+}
+
+//--------------------------------------------------------------------------
+void Hex27SCV::shifted_grad_op(
+  SharedMemView<DoubleType**>&coords,
+  SharedMemView<DoubleType***>&gradop,
+  SharedMemView<DoubleType***>&deriv)
+{
+  generic_grad_op<AlgTraits>(shiftedReferenceGradWeights_, coords, gradop);
+
+  // copy derivs as well.  These aren't used, but are part of the interface
+  for (int ip = 0; ip < AlgTraits::numScsIp_; ++ip) {
+    for (int n = 0; n < AlgTraits::nodesPerElement_; ++n) {
+      for (int d = 0; d < AlgTraits::nDim_; ++d) {
+        deriv(ip,n,d) = shiftedReferenceGradWeights_(ip,n,d);
       }
     }
   }
@@ -840,13 +868,16 @@ Hex27SCS::Hex27SCS()
   referenceGradWeights_ = copy_deriv_weights_to_view<GradWeightType>(shapeDerivs_);
 
   eval_shape_functions_at_shifted_ips();
-  interpWeights_ = copy_interpolation_weights_to_view<InterpWeightType>(shapeFunctions_);
+  shiftedInterpWeights_ = copy_interpolation_weights_to_view<InterpWeightType>(shapeFunctionsShift_);
 
   eval_shape_derivs_at_shifted_ips();
   shiftedReferenceGradWeights_ = copy_deriv_weights_to_view<GradWeightType>(shapeDerivsShift_);
 
   eval_shape_derivs_at_face_ips();
   expReferenceGradWeights_ = copy_deriv_weights_to_view<ExpGradWeightType>(expFaceShapeDerivs_);
+  
+  eval_shape_derivs_at_shifted_face_ips();
+  expReferenceGradWeightsShift_ = copy_deriv_weights_to_view<ExpGradWeightType>(expFaceShapeDerivsShift_);
 }
 
 //--------------------------------------------------------------------------
@@ -1029,6 +1060,7 @@ Hex27SCS::set_boundary_info()
   ipNodeMap_.resize(numFaceIps);
   oppNode_.resize(numFaceIps);
   intgExpFace_.resize(numFaceIps*nDim_); // size = 648
+  intgExpFaceShift_.resize(numFaceIps*nDim_); // size = 648
 
   // face ordinal to tensor-product style node ordering
   const std::vector<int> stkFaceNodeMap = {
@@ -1088,6 +1120,10 @@ Hex27SCS::set_boundary_info()
           intgExpFace_[vector_index + 1] = faceLoc[faceOrdinal];
           intgExpFace_[vector_index + 2] = intgLoc_[oppFace_[scalar_index]*nDim_+2];
 
+          intgExpFaceShift_[vector_index]     = intgLocShift_[oppFace_[scalar_index]*nDim_+0];
+          intgExpFaceShift_[vector_index + 1] = faceLoc[faceOrdinal];
+          intgExpFaceShift_[vector_index + 2] = intgLocShift_[oppFace_[scalar_index]*nDim_+2];
+
           // increment indices
           ++scalar_index;
           vector_index += nDim_;
@@ -1115,6 +1151,10 @@ Hex27SCS::set_boundary_info()
           intgExpFace_[vector_index]     = faceLoc[faceOrdinal];
           intgExpFace_[vector_index + 1] = intgLoc_[oppFace_[scalar_index]*nDim_+1];
           intgExpFace_[vector_index + 2] = intgLoc_[oppFace_[scalar_index]*nDim_+2];
+
+          intgExpFaceShift_[vector_index]     = faceLoc[faceOrdinal];
+          intgExpFaceShift_[vector_index + 1] = intgLocShift_[oppFace_[scalar_index]*nDim_+1];
+          intgExpFaceShift_[vector_index + 2] = intgLocShift_[oppFace_[scalar_index]*nDim_+2];
 
           // increment indices
           ++scalar_index;
@@ -1144,6 +1184,10 @@ Hex27SCS::set_boundary_info()
           intgExpFace_[vector_index + 1] = faceLoc[faceOrdinal];
           intgExpFace_[vector_index + 2] = intgLoc_[oppFace_[scalar_index]*nDim_+2];
 
+          intgExpFaceShift_[vector_index]     = intgLocShift_[oppFace_[scalar_index]*nDim_+0];
+          intgExpFaceShift_[vector_index + 1] = faceLoc[faceOrdinal];
+          intgExpFaceShift_[vector_index + 2] = intgLocShift_[oppFace_[scalar_index]*nDim_+2];
+
           // increment indices
           ++scalar_index;
           vector_index += nDim_;
@@ -1171,6 +1215,10 @@ Hex27SCS::set_boundary_info()
           intgExpFace_[vector_index]     = faceLoc[faceOrdinal];
           intgExpFace_[vector_index + 1] = intgLoc_[oppFace_[scalar_index]*nDim_+1];
           intgExpFace_[vector_index + 2] = intgLoc_[oppFace_[scalar_index]*nDim_+2];
+
+          intgExpFaceShift_[vector_index]     = faceLoc[faceOrdinal];
+          intgExpFaceShift_[vector_index + 1] = intgLocShift_[oppFace_[scalar_index]*nDim_+1];
+          intgExpFaceShift_[vector_index + 2] = intgLocShift_[oppFace_[scalar_index]*nDim_+2];
 
           // increment indices
           ++scalar_index;
@@ -1200,6 +1248,10 @@ Hex27SCS::set_boundary_info()
           intgExpFace_[vector_index + 1] = intgLoc_[oppFace_[scalar_index]*nDim_+1];
           intgExpFace_[vector_index + 2] = faceLoc[faceOrdinal];
 
+          intgExpFaceShift_[vector_index]     = intgLocShift_[oppFace_[scalar_index]*nDim_+0];
+          intgExpFaceShift_[vector_index + 1] = intgLocShift_[oppFace_[scalar_index]*nDim_+1];
+          intgExpFaceShift_[vector_index + 2] = faceLoc[faceOrdinal];
+
           // increment indices
           ++scalar_index;
           vector_index += nDim_;
@@ -1227,6 +1279,10 @@ Hex27SCS::set_boundary_info()
           intgExpFace_[vector_index]     = intgLoc_[oppFace_[scalar_index]*nDim_+0];
           intgExpFace_[vector_index + 1] = intgLoc_[oppFace_[scalar_index]*nDim_+1];
           intgExpFace_[vector_index + 2] = faceLoc[faceOrdinal];
+
+          intgExpFaceShift_[vector_index]     = intgLocShift_[oppFace_[scalar_index]*nDim_+0];
+          intgExpFaceShift_[vector_index + 1] = intgLocShift_[oppFace_[scalar_index]*nDim_+1];
+          intgExpFaceShift_[vector_index + 2] = faceLoc[faceOrdinal];
 
           // increment indices
           ++scalar_index;
@@ -1448,7 +1504,7 @@ void Hex27SCS::grad_op(
   SharedMemView<DoubleType***>&gradop,
   SharedMemView<DoubleType***>&deriv)
 {
-  generic_grad_op_3d<AlgTraits>(referenceGradWeights_, coords, gradop);
+  generic_grad_op<AlgTraits>(referenceGradWeights_, coords, gradop);
 
   // copy derivs as well.  These aren't used, but are part of the interface
   for (int ip = 0; ip < AlgTraits::numScsIp_; ++ip) {
@@ -1491,13 +1547,14 @@ void Hex27SCS::shifted_grad_op(
     }
   }
 }
+
 //--------------------------------------------------------------------------
 void Hex27SCS::shifted_grad_op(
   SharedMemView<DoubleType**>&coords,
   SharedMemView<DoubleType***>&gradop,
   SharedMemView<DoubleType***>&deriv)
 {
-  generic_grad_op_3d<AlgTraits>(shiftedReferenceGradWeights_, coords, gradop);
+  generic_grad_op<AlgTraits>(shiftedReferenceGradWeights_, coords, gradop);
 
   // copy derivs as well.  These aren't used, but are part of the interface
   for (int ip = 0; ip < AlgTraits::numScsIp_; ++ip) {
@@ -1508,6 +1565,7 @@ void Hex27SCS::shifted_grad_op(
     }
   }
 }
+
 //--------------------------------------------------------------------------
 //-------- face_grad_op ----------------------------------------------------
 //--------------------------------------------------------------------------
@@ -1535,6 +1593,33 @@ void Hex27SCS::face_grad_op(
   }
 }
 
+//--------------------------------------------------------------------------
+//-------- shifted_face_grad_op --------------------------------------------
+//--------------------------------------------------------------------------
+void Hex27SCS::shifted_face_grad_op(
+  const int nelem,
+  const int face_ordinal,
+  const double *coords,
+  double *gradop,
+  double *det_j,
+  double *error)
+{
+  ThrowRequireMsg(nelem == 1, "P2 elements are processed one-at-a-time");
+
+  *error = 0.0;
+  const int face_offset =  nDim_ * ipsPerFace_ * nodesPerElement_ * face_ordinal;
+  const double* offsetFaceDerivs = &expFaceShapeDerivsShift_[face_offset];
+
+  for (int ip = 0; ip < ipsPerFace_; ++ip) {
+    const int grad_offset = nDim_ * nodesPerElement_ * ip;
+    gradient(coords, &offsetFaceDerivs[grad_offset], &gradop[grad_offset], &det_j[ip]);
+
+    if (det_j[ip] < tiny_positive_value()) {
+      *error = 1.0;
+    }
+  }
+}
+
 void Hex27SCS::face_grad_op(
   int face_ordinal,
   SharedMemView<DoubleType**>& coords,
@@ -1544,7 +1629,19 @@ void Hex27SCS::face_grad_op(
   const int offset = traits::numFaceIp_ * face_ordinal;
   auto range = std::make_pair(offset, offset + traits::numFaceIp_);
   auto face_weights = Kokkos::subview(expReferenceGradWeights_, range, Kokkos::ALL(), Kokkos::ALL());
-  generic_grad_op_3d<AlgTraitsHex27>(face_weights, coords, gradop);
+  generic_grad_op<AlgTraitsHex27>(face_weights, coords, gradop);
+}
+
+void Hex27SCS::shifted_face_grad_op(
+  int face_ordinal,
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop)
+{
+  using traits = AlgTraitsQuad9Hex27;
+  const int offset = traits::numFaceIp_ * face_ordinal;
+  auto range = std::make_pair(offset, offset + traits::numFaceIp_);
+  auto face_weights = Kokkos::subview(expReferenceGradWeightsShift_, range, Kokkos::ALL(), Kokkos::ALL());
+  generic_grad_op<AlgTraitsHex27>(face_weights, coords, gradop);
 }
 
 

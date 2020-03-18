@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 #include <limits>
 
-#include <TimeIntegrator.h>
-#include <MovingAveragePostProcessor.h>
+#include "TimeIntegrator.h"
+#include "MovingAveragePostProcessor.h"
 
 #include <stk_util/parallel/Parallel.hpp>
 #include <stk_mesh/base/MetaData.hpp>
@@ -38,8 +38,8 @@ public:
         stk::topology::NODE_RANK,
         sierra::nalu::MovingAveragePostProcessor::filtered_field_name("temperature")
     );
-    stk::mesh::put_field(*temperature_, meta_.universal_part());
-    stk::mesh::put_field(*raTemperature_, meta_.universal_part());
+    stk::mesh::put_field_on_mesh(*temperature_, meta_.universal_part(), nullptr);
+    stk::mesh::put_field_on_mesh(*raTemperature_, meta_.universal_part(), nullptr);
     meta_.commit();
 
     bulk_.modification_begin();
@@ -68,8 +68,9 @@ TEST_F(PostProcessor, moving_average_constant)
 
     double timeScale = 0.1;
     sierra::nalu::MovingAveragePostProcessor avgPP(bulk_, timeIntegrator_, false);
-    avgPP.add_fields({"temperature"});
-    avgPP.set_time_scale(timeScale);
+    const std::string primitiveName = "temperature";
+    avgPP.add_fields({primitiveName});
+    avgPP.set_time_scale(primitiveName, timeScale);
 
     for (int j = 0; j < numSteps; ++j) {
       double* temperatureVal = stk::mesh::field_data(*temperature_, node);
@@ -114,8 +115,9 @@ TEST_F(PostProcessor, moving_average_ou)
 
     double timeScale = 0.1;
     sierra::nalu::MovingAveragePostProcessor avgPP(bulk_, timeIntegrator_, false);
-    avgPP.add_fields({"temperature"});
-    avgPP.set_time_scale(timeScale);
+    const std::string primitiveName = "temperature";
+    avgPP.add_fields({primitiveName});
+    avgPP.set_time_scale(primitiveName, timeScale);
 
     std::ofstream outputFile("PostProcessor.moving_average_ou.txt");
     outputFile << "t, temperature, temperature_avg" << std::endl;

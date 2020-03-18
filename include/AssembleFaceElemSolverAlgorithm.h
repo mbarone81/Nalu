@@ -49,14 +49,18 @@ public:
       sierra::nalu::MasterElement* meFC = faceDataNeeded_.get_cvfem_face_me();
       sierra::nalu::MasterElement* meSCS = faceDataNeeded_.get_cvfem_surface_me();
       sierra::nalu::MasterElement* meSCV = faceDataNeeded_.get_cvfem_volume_me();
-
+      sierra::nalu::MasterElement* meFEM = faceDataNeeded_.get_fem_volume_me();
+      sierra::nalu::MasterElement* meFCFEM = faceDataNeeded_.get_fem_face_me();
+      
       sierra::nalu::ScratchMeInfo meElemInfo;
       meElemInfo.nodalGatherSize_ = nodesPerElem_;
       meElemInfo.nodesPerFace_ = nodesPerFace_;
       meElemInfo.nodesPerElement_ = nodesPerElem_;
-      meElemInfo.numFaceIp_ = meFC != nullptr ? meFC->numIntPoints_ : 0;
+      meElemInfo.numFaceIp_ = meFC != nullptr ? meFC->numIntPoints_  
+        : meFCFEM != nullptr ? meFCFEM->numIntPoints_: 0;
       meElemInfo.numScsIp_ = meSCS != nullptr ? meSCS->numIntPoints_ : 0;
       meElemInfo.numScvIp_ = meSCV != nullptr ? meSCV->numIntPoints_ : 0;
+      meElemInfo.numFemIp_ = meFEM != nullptr ? meFEM->numIntPoints_ : 0;
 
       int rhsSize = meElemInfo.nodalGatherSize_*numDof_, lhsSize = rhsSize*rhsSize, scratchIdsSize = rhsSize;
 
@@ -66,7 +70,8 @@ public:
 
       const bool interleaveMeViews = false;
 
-      stk::mesh::Selector s_locally_owned_union = bulk.mesh_meta_data().locally_owned_part() & *part_;
+      stk::mesh::Selector s_locally_owned_union = bulk.mesh_meta_data().locally_owned_part() 
+        &stk::mesh::selectUnion(partVec_);
       stk::mesh::EntityRank sideRank = bulk.mesh_meta_data().side_rank();
       stk::mesh::BucketVector const& buckets = bulk.get_buckets(sideRank, s_locally_owned_union );
 
@@ -76,7 +81,7 @@ public:
         stk::mesh::Bucket & b = *buckets[team.league_rank()];
 
         ThrowAssertMsg(b.topology().num_nodes() == (unsigned)nodesPerFace_,
-                       "TestFaceElemAlgorithm expected nodesPerEntity_ = "
+                       "AssembleFaceElemSolverAlgorithm expected nodesPerEntity_ = "
                        <<nodesPerFace_<<", but b.topology().num_nodes() = "<<b.topology().num_nodes());
 
         SharedMemData_FaceElem smdata(team, bulk, faceDataNeeded_, elemDataNeeded_, meElemInfo, rhsSize);
@@ -86,31 +91,45 @@ public:
 
         Kokkos::parallel_for(Kokkos::TeamThreadRange(team, simdBucketLen), [&](const size_t& bktIndex)
         {
-          smdata.numSimdFaces = sierra::nalu::get_length_of_next_simd_group(bktIndex, bucketLen);
+          size_t simdGroupLen = sierra::nalu::get_length_of_next_simd_group(bktIndex, bucketLen);
+          size_t numFacesProcessed = 0;
+          do {
+            int elemFaceOrdinal = -1;
+            int simdFaceIndex = 0;
+            while((numFacesProcessed+simdFaceIndex)<simdGroupLen) {
+              stk::mesh::Entity face = b[bktIndex*simdLen + numFacesProcessed + simdFaceIndex];
+              ThrowAssertMsg(bulk.num_elements(face)==1, "Expecting just 1 element attached to face!");
+              int thisElemFaceOrdinal = bulk.begin_element_ordinals(face)[0];
 
-          for(int simdFaceIndex=0; simdFaceIndex<smdata.numSimdFaces; ++simdFaceIndex) {
-            stk::mesh::Entity face = b[bktIndex*simdLen + simdFaceIndex];
-            smdata.elemFaceOrdinals[simdFaceIndex] = bulk.begin_element_ordinals(face)[0];
-            sierra::nalu::fill_pre_req_data(faceDataNeeded_, bulk, face, *smdata.faceViews[simdFaceIndex], interleaveMeViews);
+              if (elemFaceOrdinal >= 0 && thisElemFaceOrdinal != elemFaceOrdinal) {
+                break;
+              }
 
-            const stk::mesh::Entity* elems = bulk.begin_elements(face);
-            ThrowAssertMsg(bulk.num_elements(face)==1, "Expecting just 1 element attached to face!");
-            sierra::nalu::fill_pre_req_data(elemDataNeeded_, bulk, elems[0], *smdata.elemViews[simdFaceIndex], interleaveMeViews);
-          }
-
-          copy_and_interleave(smdata.faceViews, smdata.numSimdFaces, smdata.simdFaceViews, interleaveMeViews);
-          copy_and_interleave(smdata.elemViews, smdata.numSimdFaces, smdata.simdElemViews, interleaveMeViews);
-          fill_master_element_views(faceDataNeeded_, bulk, smdata.simdFaceViews, smdata.elemFaceOrdinals[0]);
-          fill_master_element_views(elemDataNeeded_, bulk, smdata.simdElemViews, smdata.elemFaceOrdinals[0]);
-
-          lamdbaFunc(smdata);
+              const stk::mesh::Entity* elems = bulk.begin_elements(face);
+  
+              smdata.connectedNodes[simdFaceIndex] = bulk.begin_nodes(elems[0]);
+              smdata.elemFaceOrdinal = thisElemFaceOrdinal;
+              elemFaceOrdinal = thisElemFaceOrdinal;
+              sierra::nalu::fill_pre_req_data(faceDataNeeded_, bulk, face, *smdata.faceViews[simdFaceIndex], interleaveMeViews);
+              sierra::nalu::fill_pre_req_data(elemDataNeeded_, bulk, elems[0], *smdata.elemViews[simdFaceIndex], interleaveMeViews);
+              ++simdFaceIndex;
+            }
+            smdata.numSimdFaces = simdFaceIndex;
+            numFacesProcessed += simdFaceIndex;
+  
+            copy_and_interleave(smdata.faceViews, smdata.numSimdFaces, smdata.simdFaceViews, interleaveMeViews);
+            copy_and_interleave(smdata.elemViews, smdata.numSimdFaces, smdata.simdElemViews, interleaveMeViews);
+            fill_master_element_views(faceDataNeeded_, bulk, smdata.simdFaceViews, smdata.elemFaceOrdinal);
+            fill_master_element_views(elemDataNeeded_, bulk, smdata.simdElemViews, smdata.elemFaceOrdinal);
+  
+            lamdbaFunc(smdata);
+          } while(numFacesProcessed < simdGroupLen);
         });
       });
   }
 
   ElemDataRequests faceDataNeeded_;
   ElemDataRequests elemDataNeeded_;
-  stk::mesh::Part* part_;
   unsigned numDof_;
   unsigned nodesPerFace_;
   unsigned nodesPerElem_;

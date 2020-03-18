@@ -40,20 +40,54 @@ class Transfers;
 
 class DataProbeInfo {
 public:
-  DataProbeInfo() { }
+   DataProbeInfo() : numProbes_(0) {}
   ~DataProbeInfo() {}
-
+  
   // for each type of probe, e.g., line of site, hold some stuff
-  bool isLineOfSite_;
   int numProbes_;
+  // manage the types of probes
+  std::vector<int> isLineOfSite_;
+  std::vector<int> isRing_;
   std::vector<std::string> partName_;
-  std::vector<int> processorId_;
+  std::vector<int> probeOnThisRank_;
   std::vector<int> numPoints_;
+  std::vector<int> numLinePoints_;
+  std::vector<int> numTotalPoints_;
   std::vector<int> generateNewIds_;
+
+  // line of nodes
   std::vector<Coordinates> tipCoordinates_;
   std::vector<Coordinates> tailCoordinates_;
+
+  // ring unit normal and origin (vector or vectors to allow for 3D and 2D rotations)
+  std::vector<std::array<double, 3> > unitNormal_;
+  std::vector<std::array<double, 3> > originCoordinates_;
+  std::vector<std::array<double, 3> > seedCoordinates_;
+  
   std::vector<std::vector<stk::mesh::Entity> > nodeVector_;
   std::vector<stk::mesh::Part *> part_;
+};
+
+class ProbeType {
+public:
+ ProbeType() : dataProbeInfo_(new DataProbeInfo()) {}
+  ~ProbeType() {delete dataProbeInfo_;} 
+  DataProbeInfo *dataProbeInfo_;
+
+  void setup();
+  void increment();
+};
+
+class LineOfSiteProbeType : public ProbeType {
+public:
+ LineOfSiteProbeType() {}
+ ~LineOfSiteProbeType() {}
+};
+
+class RingProbeType : public ProbeType {
+public:
+ RingProbeType() {}
+ ~RingProbeType() {}
 };
 
 class DataProbeSpecInfo {
@@ -70,6 +104,9 @@ public:
   // homegeneous collection of fields over each specification
   std::vector<std::pair<std::string, std::string> > fromToName_;
   std::vector<std::pair<std::string, int> > fieldInfo_;
+
+  // vector of probe types
+  std::vector<ProbeType *> probeTypeVec_;
 };
 
 class DataProbePostProcessing
@@ -100,9 +137,6 @@ public:
   void review( 
     const DataProbeInfo *probeInfo);
 
-  // we want these nodes to be excluded from anything of importance
-  void create_inactive_selector();
-
   // create the transfer and hold the vector in the DataProbePostProcessing class
   void create_transfer();
 
@@ -112,8 +146,11 @@ public:
   // output to a file
   void provide_output(const double currentTime);
   
-  // provide the inactive selector
-  stk::mesh::Selector &get_inactive_selector();
+  // general rotation matrix about a unit normal centered at origin (0,0,0)
+  void compute_R(const double theta, const std::vector<double> &u, std::vector<double> &R);
+  
+  // provide a 3x3 * 3x1 multiply
+  void mat_vec(const std::vector<double> &coord, const std::vector<double> &R, std::vector<double> &newCoord); 
 
   // hold the realm
   Realm &realm_;
@@ -131,11 +168,7 @@ public:
 
   // vector of specifications
   std::vector<DataProbeSpecInfo *> dataProbeSpecInfo_;
-
-  // hold all the parts; provide a selector
-  stk::mesh::PartVector allTheParts_;
-  stk::mesh::Selector inactiveSelector_;
-
+ 
   // hold the transfers
   Transfers *transfers_;
 };

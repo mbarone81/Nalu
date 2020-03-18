@@ -28,9 +28,9 @@ public:
     Realm &realm,
     stk::mesh::PartVector &partVec,
     const std::string &outputFileName,
-    const int &frequency_,
     const std::vector<double > &parameters,
-    const bool &useShifted);
+    const bool &useShifted,
+    ScalarFieldType *assembledArea);
   ~SurfaceForceAndMomentWallFunctionAlgorithm();
 
   void execute();
@@ -41,13 +41,13 @@ public:
     double *force, double *cross, double *rad);
 
   const std::string &outputFileName_;
-  const int &frequency_;
   const std::vector<double > &parameters_;
   const bool useShifted_;
   const double yplusCrit_;
   const double elog_;
   const double kappa_;
 
+  ScalarFieldType *assembledArea_;
   VectorFieldType *coordinates_;
   VectorFieldType *velocity_;
   ScalarFieldType *pressure_;
@@ -60,7 +60,6 @@ public:
   GenericFieldType *wallFrictionVelocityBip_;
   GenericFieldType *wallNormalDistanceBip_;
   GenericFieldType *exposedAreaVec_;
-  ScalarFieldType *assembledArea_;
 
   const int w_;
 };

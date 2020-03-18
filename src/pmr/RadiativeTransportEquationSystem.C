@@ -6,31 +6,31 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <pmr/RadiativeTransportEquationSystem.h>
-#include <pmr/RadTransBlackBodyNodeSuppAlg.h>
-#include <pmr/RadTransIsoScatteringNodeSuppAlg.h>
-#include <pmr/AssembleRadTransEdgeSolverAlgorithm.h>
-#include <pmr/AssembleRadTransEdgeUpwindSolverAlgorithm.h>
-#include <pmr/AssembleRadTransWallSolverAlgorithm.h>
-#include <AssembleNodeSolverAlgorithm.h>
-#include <AuxFunctionAlgorithm.h>
-#include <ConstantAuxFunction.h>
-#include <CopyFieldAlgorithm.h>
-#include <DirichletBC.h>
-#include <EquationSystem.h>
-#include <EquationSystems.h>
-#include <Enums.h>
-#include <FieldFunctions.h>
-#include <LinearSolvers.h>
-#include <LinearSolver.h>
-#include <LinearSystem.h>
-#include <master_element/MasterElement.h>
-#include <NaluEnv.h>
-#include <Realm.h>
-#include <Realms.h>
-#include <Simulation.h>
-#include <SolutionOptions.h>
-#include <SolverAlgorithmDriver.h>
+#include "pmr/RadiativeTransportEquationSystem.h"
+#include "pmr/RadTransBlackBodyNodeSuppAlg.h"
+#include "pmr/RadTransIsoScatteringNodeSuppAlg.h"
+#include "pmr/AssembleRadTransEdgeSolverAlgorithm.h"
+#include "pmr/AssembleRadTransEdgeUpwindSolverAlgorithm.h"
+#include "pmr/AssembleRadTransWallSolverAlgorithm.h"
+#include "AssembleNodeSolverAlgorithm.h"
+#include "AuxFunctionAlgorithm.h"
+#include "ConstantAuxFunction.h"
+#include "CopyFieldAlgorithm.h"
+#include "DirichletBC.h"
+#include "EquationSystem.h"
+#include "EquationSystems.h"
+#include "Enums.h"
+#include "FieldFunctions.h"
+#include "LinearSolvers.h"
+#include "LinearSolver.h"
+#include "LinearSystem.h"
+#include "master_element/MasterElement.h"
+#include "NaluEnv.h"
+#include "Realm.h"
+#include "Realms.h"
+#include "Simulation.h"
+#include "SolutionOptions.h"
+#include "SolverAlgorithmDriver.h"
 
 // template for kernels
 #include "AlgTraits.h"
@@ -105,6 +105,7 @@ RadiativeTransportEquationSystem::RadiativeTransportEquationSystem(
     temperature_(NULL),
     radiativeHeatFlux_(NULL),
     divRadiativeHeatFlux_(NULL),
+    divRadiativeHeatFluxLin_(NULL),
     radiationSource_(NULL),
     scalarFlux_(NULL),
     scalarFluxOld_(NULL),
@@ -389,7 +390,7 @@ RadiativeTransportEquationSystem::register_nodal_fields(
 
   // register all number of ordinates intensity; reserve intensity_ for "curent"
   intensity_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "intensity"));
-  stk::mesh::put_field(*intensity_, *part);
+  stk::mesh::put_field_on_mesh(*intensity_, *part, nullptr);
 
   // may not want all of these at production time...
   for ( int k = 0; k < ordinateDirections_; ++k ) {
@@ -398,48 +399,53 @@ RadiativeTransportEquationSystem::register_nodal_fields(
     const std::string incrementName = ss.str();
     const std::string theName = "intensity_" + incrementName;
     ScalarFieldType *intensityK = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, theName));
-    stk::mesh::put_field(*intensityK, *part);
+    stk::mesh::put_field_on_mesh(*intensityK, *part, nullptr);
   }
 
   // delta solution for linear solver
   iTmp_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "iTmp"));
-  stk::mesh::put_field(*iTmp_, *part);
+  stk::mesh::put_field_on_mesh(*iTmp_, *part, nullptr);
 
   dualNodalVolume_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "dual_nodal_volume"));
-  stk::mesh::put_field(*dualNodalVolume_, *part);
+  stk::mesh::put_field_on_mesh(*dualNodalVolume_, *part, nullptr);
 
   coordinates_ =  &(meta_data.declare_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates"));
-  stk::mesh::put_field(*coordinates_, *part, nDim);
+  stk::mesh::put_field_on_mesh(*coordinates_, *part, nDim, nullptr);
 
   temperature_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "temperature"));
-  stk::mesh::put_field(*temperature_, *part);
+  stk::mesh::put_field_on_mesh(*temperature_, *part, nullptr);
 
   radiativeHeatFlux_ = &(meta_data.declare_field<VectorFieldType>(stk::topology::NODE_RANK, "radiative_heat_flux"));
-  stk::mesh::put_field(*radiativeHeatFlux_, *part, nDim);
+  stk::mesh::put_field_on_mesh(*radiativeHeatFlux_, *part, nDim, nullptr);
 
   divRadiativeHeatFlux_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "div_radiative_heat_flux"));
-  stk::mesh::put_field(*divRadiativeHeatFlux_, *part);
+  stk::mesh::put_field_on_mesh(*divRadiativeHeatFlux_, *part, nullptr);
+  realm_.augment_restart_variable_list(divRadiativeHeatFlux_->name());
 
+  divRadiativeHeatFluxLin_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "div_radiative_heat_flux_linearization"));
+  stk::mesh::put_field_on_mesh(*divRadiativeHeatFluxLin_, *part, nullptr);
+  realm_.augment_restart_variable_list(divRadiativeHeatFluxLin_->name());
+  
   radiationSource_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "radiation_source"));
-  stk::mesh::put_field(*radiationSource_, *part);
+  stk::mesh::put_field_on_mesh(*radiationSource_, *part, nullptr);
 
   scalarFlux_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "scalar_flux"));
-  stk::mesh::put_field(*scalarFlux_, *part);
+  stk::mesh::put_field_on_mesh(*scalarFlux_, *part, nullptr);
 
   // for non-linear residual
   scalarFluxOld_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "scalar_flux_old"));
-  stk::mesh::put_field(*scalarFluxOld_, *part);
+  stk::mesh::put_field_on_mesh(*scalarFluxOld_, *part, nullptr);
 
   // props; register and push
   absorptionCoeff_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "absorption_coefficient"));
-  stk::mesh::put_field(*absorptionCoeff_, *part);
+  stk::mesh::put_field_on_mesh(*absorptionCoeff_, *part, nullptr);
   // possibly provided by another coupling mechanism; if so, do not push to propery evaluation
   if (!externalCoupling_)
     realm_.augment_property_map(ABSORBTION_COEFF_ID, absorptionCoeff_);
 
   // always register, however, do not make the user provide a value (default to zero)
   scatteringCoeff_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "scattering_coefficient"));
-  stk::mesh::put_field(*scatteringCoeff_, *part);
+  stk::mesh::put_field_on_mesh(*scatteringCoeff_, *part, nullptr);
   if ( activateScattering_ )
     realm_.augment_property_map(SCATTERING_COEFF_ID, scatteringCoeff_);
   
@@ -461,7 +467,7 @@ RadiativeTransportEquationSystem::register_edge_fields(
   if ( realm_.realmUsesEdges_ ) {
     const int nDim = meta_data.spatial_dimension();
     edgeAreaVec_ = &(meta_data.declare_field<VectorFieldType>(stk::topology::EDGE_RANK, "edge_area_vector"));
-    stk::mesh::put_field(*edgeAreaVec_, *part, nDim);
+    stk::mesh::put_field_on_mesh(*edgeAreaVec_, *part, nDim, nullptr);
   }
 
 }
@@ -594,25 +600,26 @@ RadiativeTransportEquationSystem::register_wall_bc(
 
     // register germane fields (boundary data)
     intensityBc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "intensity_bc"));
-    stk::mesh::put_field(*intensityBc_, *part);
+    stk::mesh::put_field_on_mesh(*intensityBc_, *part, nullptr);
 
     emissivity_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "emissivity"));
-    stk::mesh::put_field(*emissivity_, *part);
+    stk::mesh::put_field_on_mesh(*emissivity_, *part, nullptr);
 
     transmissivity_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "transmissivity"));
-    stk::mesh::put_field(*transmissivity_, *part);
+    stk::mesh::put_field_on_mesh(*transmissivity_, *part, nullptr);
 
     environmentalT_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "environmental_temperature"));
-    stk::mesh::put_field(*environmentalT_, *part);
+    stk::mesh::put_field_on_mesh(*environmentalT_, *part, nullptr);
 
     irradiation_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "irradiation"));
-    stk::mesh::put_field(*irradiation_, *part);
-
+    stk::mesh::put_field_on_mesh(*irradiation_, *part, nullptr);
+    realm_.augment_restart_variable_list(irradiation_->name());
+    
     bcTemperature_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "temperature_bc"));
-    stk::mesh::put_field(*bcTemperature_, *part);
+    stk::mesh::put_field_on_mesh(*bcTemperature_, *part, nullptr);
 
     assembledBoundaryArea_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_boundary_area"));
-    stk::mesh::put_field(*assembledBoundaryArea_, *part);
+    stk::mesh::put_field_on_mesh(*assembledBoundaryArea_, *part, nullptr);
 
     // interior temperature is not over written by boundary value; push to bcTemperature_
     Temperature theTemp = userData.temperature_;
@@ -695,7 +702,7 @@ RadiativeTransportEquationSystem::register_wall_bc(
       AssembleElemSolverAlgorithm* solverAlg = nullptr;
       bool solverAlgWasBuilt = false;
       
-      std::tie(solverAlg, solverAlgWasBuilt) = build_or_add_part_to_face_bc_solver_alg(*this, *part, solverAlgMap);
+      std::tie(solverAlg, solverAlgWasBuilt) = build_or_add_part_to_face_bc_solver_alg(*this, *part, solverAlgMap, "wall");
       
       ElemDataRequests& dataPreReqs = solverAlg->dataNeededByKernels_;
       auto& activeKernels = solverAlg->activeKernels_;
@@ -830,25 +837,28 @@ RadiativeTransportEquationSystem::solve_and_update()
     compute_bc_intensity();
     isInit_ = false;
   }
-
+  
   compute_radiation_source();
-
+  
+  // extract equation system status before first iteration or first ordinate solve
+  bool firstTimeStepSolve = firstTimeStepSolve_;
+  
   for ( int i = 0; i < maxIterations_; ++i ) {
-
+    
     // zero out qj, G; irradiation
     zero_out_fields();
     zero_irradiation();
-
+    
     NaluEnv::self().naluOutputP0() << "   "
-                    << userSuppliedName_ << " Iteration: " << i+1 << "/" << maxIterations_ << std::endl;
-
+                                   << userSuppliedName_ << " Iteration: " << i+1 << "/" << maxIterations_ << std::endl;
+    
     double nonLinearResidualSum = 0.0;
     double linearIterationsSum = 0.0;
     for ( int k = 0; k < ordinateDirections_; ++k ) {
-
+      
       // unload Sk and weight for this ordinate direction k
       set_current_ordinate_info(k);
-
+      
       // intensity RTE assemble, load_complete and solve
       assemble_and_solve(iTmp_);
       
@@ -862,57 +872,55 @@ RadiativeTransportEquationSystem::solve_and_update()
         realm_.get_activate_aura());
       double timeB = NaluEnv::self().nalu_time();
       timerAssemble_ += (timeB-timeA);
-   
+      
       // assemble qj, G; operates on intensity_
       assemble_fields();
-
+      
       assemble_irradiation();
-
+      
       // copy intensity_ back to intensity_k
       copy_ordinate_intensity(*intensity_, *currentIntensity_);
-
+      
       // increment solve counts and norms
       linearIterationsSum += linsys_->linearSolveIterations();
       nonLinearResidualSum += linsys_->nonLinearResidual();
-
+      
     }
-
+    
     // save total nonlinear residual
     nonLinearResidualSum_ = nonLinearResidualSum/double(ordinateDirections_);
-
-    // sa
-    if ( realm_.currentNonlinearIteration_ == 1 )
-      firstNonLinearResidualSum_ = nonLinearResidualSum_;
-
+    
+    // save the very first nonlinear residual
+    if ( firstTimeStepSolve  ) {
+      firstNonLinearResidualSum_ = std::max(std::numeric_limits<double>::epsilon(), nonLinearResidualSum_);
+      firstTimeStepSolve = false;
+    }
+    
     // normalize_irradiation
     normalize_irradiation();
-
+    
     // compute boundary intensity
     compute_bc_intensity();
-
+    
     // compute divRadFLux and norm
     compute_div_norm();
     copy_ordinate_intensity(*scalarFlux_, *scalarFluxOld_);
-
+    
     // dump norm and averages
     NaluEnv::self().naluOutputP0()
       << "EqSystem Name:       " << userSuppliedName_ << std::endl
       << "   aver iters      = " << linearIterationsSum/double(ordinateDirections_) << std::endl
-      << "nonlinearResidNrm  = " << nonLinearResidualSum/double(ordinateDirections_) 
+      << "nonlinearResidNrm  = " << nonLinearResidualSum_
       << " scaled: " << nonLinearResidualSum_/firstNonLinearResidualSum_ << std::endl
       << "Scalar flux norm   = " << systemL2Norm_ << std::endl;
     NaluEnv::self().naluOutputP0() << std::endl;
-
-    // check for convergence; min between nonlinear and "for show" system norm
-    const double bestConverged
-      = std::min(nonLinearResidualSum/double(ordinateDirections_), systemL2Norm_);
-    if ( bestConverged < convergenceTolerance_ ) {
-      NaluEnv::self().naluOutputP0() << "Intensity Equation System Converged" << std::endl;
+    
+    // check for convergence
+    if ( system_is_converged() ) {
+      NaluEnv::self().naluOutputP0() << "Local Iteration Intensity Equation System Converged" << std::endl;
       break;
     }
-
   }
-
 }
 
 //--------------------------------------------------------------------------
@@ -923,7 +931,9 @@ RadiativeTransportEquationSystem::system_is_converged()
 {
   bool isConverged = true;
   if ( NULL != linsys_ ) {
-    isConverged = (nonLinearResidualSum_/firstNonLinearResidualSum_ <  convergenceTolerance_ );
+    const double bestConverged
+      = std::min(nonLinearResidualSum_/firstNonLinearResidualSum_, systemL2Norm_);
+    isConverged = (bestConverged <  convergenceTolerance_ );
   }
   return isConverged;
 }
@@ -1179,6 +1189,12 @@ RadiativeTransportEquationSystem::assemble_boundary_area()
     stk::mesh::Bucket & b = **ib ;
 
     const stk::mesh::Bucket::size_type length   = b.size();
+
+    // extract master element and master element specifics
+    MasterElement *meFC = sierra::nalu::MasterElementRepo::get_surface_master_element(b.topology());
+    const int *ipNodeMap = meFC->ipNodeMap();
+    const int numScsIp = meFC->numIntPoints_;
+
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
 
       // face data
@@ -1187,13 +1203,11 @@ RadiativeTransportEquationSystem::assemble_boundary_area()
       // face node relations for nodal gather
       stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);
 
-      // number of nodes (equals ips) and face data
-      int num_face_ip = b.num_nodes(k);
-
-      for ( int ip = 0; ip < num_face_ip; ++ip ) {
+      for ( int ip = 0; ip < numScsIp; ++ip ) {
 
         // nearest node maps to face ip...
-        const int nn = ip;
+        const int nn = ipNodeMap[ip];
+
         stk::mesh::Entity nodeNN = face_node_rels[nn];
 
         // pointer to fields to assemble
@@ -1212,8 +1226,7 @@ RadiativeTransportEquationSystem::assemble_boundary_area()
   }
 
   // parallel and periodic assembly
-  std::vector<stk::mesh::FieldBase*> sum_fields(1, assembledBoundaryArea_);
-  stk::mesh::parallel_sum(bulk_data, sum_fields);
+  stk::mesh::parallel_sum(bulk_data, {assembledBoundaryArea_});
 
   if ( realm_.hasPeriodic_) {
     const bool bypassFieldCheck = false; // fields are not defined at all slave/master node pairs
@@ -1304,6 +1317,7 @@ RadiativeTransportEquationSystem::assemble_irradiation()
     MasterElement *meFC = sierra::nalu::MasterElementRepo::get_surface_master_element(b.topology());
     const int nodesPerFace = meFC->nodesPerElement_;
     const int numScsIp = meFC->numIntPoints_;
+    const int *ipNodeMap = meFC->ipNodeMap();
 
     // resize some things; algorithm related
     ws_intensity.resize(nodesPerFace);
@@ -1327,16 +1341,20 @@ RadiativeTransportEquationSystem::assemble_irradiation()
       // face node relations for nodal gather
       stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);
       int num_nodes = b.num_nodes(k);
+      
+      // sanity check on num nodes
+      ThrowAssert( num_nodes == nodesPerFace );
+
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         // gather scalar
         p_intensity[ni] = *stk::mesh::field_data(*intensity_, face_node_rels[ni]);
       }
 
       // start the assembly
-      for ( int ip = 0; ip < num_nodes; ++ip ) {
+      for ( int ip = 0; ip < numScsIp; ++ip ) {
 
         // nearest node maps to face ip...
-        const int nn = ip;
+        const int nn = ipNodeMap[ip];
         stk::mesh::Entity nodeNN = face_node_rels[nn];
 
         // pointer to fields to assemble
@@ -1357,20 +1375,20 @@ RadiativeTransportEquationSystem::assemble_irradiation()
           amag += areaVec[offSet+j]*areaVec[offSet+j];
         }
         amag = std::sqrt(amag);
-
+        
         // see if this ordinate direction should count..
         double dot = 0.0;
         for ( int j = 0; j < nDim; ++j ) {
           const double nj = areaVec[offSet+j]/amag;
           dot += nj*p_Sk[j];
         }
-
+        
         if ( dot > 0.0 )
           *irrad += weight*iBc*dot*amag;
       }
     }
   }
-
+  
   // let's not parallel assemble until the normalization..
 }
 
@@ -1385,7 +1403,7 @@ RadiativeTransportEquationSystem::normalize_irradiation()
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
   // parallel and periodic assembly
-  std::vector<stk::mesh::FieldBase*> sum_fields(1, irradiation_);
+  std::vector<const stk::mesh::FieldBase*> sum_fields(1, irradiation_);
   stk::mesh::parallel_sum(bulk_data, sum_fields);
 
   if ( realm_.hasPeriodic_) {
@@ -1438,6 +1456,7 @@ RadiativeTransportEquationSystem::compute_div_norm()
     stk::mesh::Bucket & b = **ib ;
     const size_t length   = b.size();
     double * divRadiativeHeatFlux = stk::mesh::field_data(*divRadiativeHeatFlux_, b);
+    double * divRadiativeHeatFluxLin = stk::mesh::field_data(*divRadiativeHeatFluxLin_, b);
     double * scalarFlux = stk::mesh::field_data(*scalarFlux_, b);
     double * scalarFluxOld = stk::mesh::field_data(*scalarFluxOld_, b);
     double * temperature = stk::mesh::field_data(*temperature_, b);
@@ -1449,6 +1468,7 @@ RadiativeTransportEquationSystem::compute_div_norm()
       const double G = scalarFlux[k];
 
       divRadiativeHeatFlux[k] = absorption[k]*(4.0*sb*T*T*T*T-G);
+      divRadiativeHeatFluxLin[k] = 16.0*sb*absorption[k]*T*T*T;
       l2Norm += (G-Gold)*(G-Gold);
     }
   }

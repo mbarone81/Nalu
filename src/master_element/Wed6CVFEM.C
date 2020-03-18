@@ -55,6 +55,50 @@ void wed_deriv(
   }
 }
 
+//-------- wedge_derivative --------------------------------------------------
+void wedge_derivative(
+  const int npts,
+  const double *intgLoc,
+  double *deriv)
+{
+  // d3d(c,s,j) = deriv[c + 3*(s + 6*j)] = deriv[c+3s+18j]
+
+  for (int  j = 0; j < npts; ++j) {
+
+    int k  = j*3;
+    const int p = 18*j;
+
+    const double r  = intgLoc[k];
+    const double s  = intgLoc[k+1];
+    const double t  = 1.0 - r - s;
+    const double xi = intgLoc[k + 2];
+
+    deriv[0+3*0+p] = -0.5 * (1.0 - xi);  // d(N_1)/ d(r)  = deriv[0]
+    deriv[1+3*0+p] = -0.5 * (1.0 - xi);  // d(N_1)/ d(s)  = deriv[1]
+    deriv[2+3*0+p] = -0.5 * t;           // d(N_1)/ d(xi) = deriv[2]
+
+    deriv[0+3*1+p] =  0.5 * (1.0 - xi);  // d(N_2)/ d(r)  = deriv[0 + 3]
+    deriv[1+3*1+p] =  0.0;               // d(N_2)/ d(s)  = deriv[1 + 3]
+    deriv[2+3*1+p] = -0.5 * r;           // d(N_2)/ d(xi) = deriv[2 + 3]
+
+    deriv[0+3*2+p] =  0.0;               // d(N_3)/ d(r)  = deriv[0 + 6]
+    deriv[1+3*2+p] =  0.5 * (1.0 - xi);  // d(N_3)/ d(s)  = deriv[1 + 6]
+    deriv[2+3*2+p] = -0.5 * s;           // d(N_3)/ d(xi) = deriv[2 + 6]
+
+    deriv[0+3*3+p] = -0.5 * (1.0 + xi);  // d(N_4)/ d(r)  = deriv[0 + 9]
+    deriv[1+3*3+p] = -0.5 * (1.0 + xi);  // d(N_4)/ d(s)  = deriv[1 + 9]
+    deriv[2+3*3+p] =  0.5 * t;           // d(N_4)/ d(xi) = deriv[2 + 9]
+
+    deriv[0+3*4+p] =  0.5 * (1.0 + xi);  // d(N_5)/ d(r)  = deriv[0 + 12]
+    deriv[1+3*4+p] =  0.0;               // d(N_5)/ d(s)  = deriv[1 + 12]
+    deriv[2+3*4+p] =  0.5 * r;           // d(N_5)/ d(xi) = deriv[2 + 12]
+
+    deriv[0+3*5+p] =  0.0;               // d(N_6)/ d(r)  = deriv[0 + 15]
+    deriv[1+3*5+p] =  0.5 * (1.0 + xi);  // d(N_6)/ d(s)  = deriv[1 + 15]
+    deriv[2+3*5+p] =  0.5 * s;           // d(N_6)/ d(xi) = deriv[2 + 15]
+  }
+}
+
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
@@ -227,7 +271,45 @@ void WedSCV::grad_op(
   SharedMemView<DoubleType***>& deriv)
 {
   wed_deriv(numIntPoints_, &intgLoc_[0], deriv);
-  generic_grad_op_3d<AlgTraitsWed6>(deriv, coords, gradop);
+  generic_grad_op<AlgTraitsWed6>(deriv, coords, gradop);
+}
+
+//--------------------------------------------------------------------------
+//-------- shifted_grad_op -------------------------------------------------
+//--------------------------------------------------------------------------
+void WedSCV::shifted_grad_op(
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop,
+  SharedMemView<DoubleType***>& deriv)
+{
+  wed_deriv(numIntPoints_, &intgLocShift_[0], deriv);
+  generic_grad_op<AlgTraitsWed6>(deriv, coords, gradop);
+}
+
+//--------------------------------------------------------------------------
+//-------- grad_op ---------------------------------------------------------
+//--------------------------------------------------------------------------
+void WedSCV::grad_op(
+  const int nelem,
+  const double *coords,
+  double *gradop,
+  double *deriv,
+  double *det_j,
+  double *error)
+{
+  int lerr = 0;
+
+  wedge_derivative(numIntPoints_, &intgLoc_[0], deriv);
+
+  SIERRA_FORTRAN(wed_gradient_operator) (
+      &nelem,
+      &nodesPerElement_,
+      &numIntPoints_,
+      deriv,
+      coords, gradop, det_j, error, &lerr );
+
+  if ( lerr )
+    NaluEnv::self().naluOutput() << "sorry, negative WedSCV volume.." << std::endl;
 }
 
 //--------------------------------------------------------------------------
@@ -311,6 +393,12 @@ WedSCS::WedSCS()
   lrscv_[12] = 0; lrscv_[13] = 3;
   lrscv_[14] = 1; lrscv_[15] = 4;
   lrscv_[16] = 2; lrscv_[17] = 5;
+
+  // elem-edge mapping from ip
+  scsIpEdgeOrd_.resize(numIntPoints_);
+  scsIpEdgeOrd_[0] = 0; scsIpEdgeOrd_[1] = 1; scsIpEdgeOrd_[2] = 2; 
+  scsIpEdgeOrd_[3] = 3; scsIpEdgeOrd_[4] = 4; scsIpEdgeOrd_[5] = 5; 
+  scsIpEdgeOrd_[6] = 6; scsIpEdgeOrd_[7] = 7; scsIpEdgeOrd_[8] = 8; 
 
   // define opposing node
   oppNode_.resize(20);
@@ -596,7 +684,7 @@ void WedSCS::grad_op(
 {
   wed_deriv(numIntPoints_, &intgLoc_[0], deriv);
 
-  generic_grad_op_3d<AlgTraitsWed6>(deriv, coords, gradop);
+  generic_grad_op<AlgTraitsWed6>(deriv, coords, gradop);
 }
 
 void WedSCS::shifted_grad_op(
@@ -606,7 +694,7 @@ void WedSCS::shifted_grad_op(
 {
   wed_deriv(numIntPoints_, &intgLocShift_[0], deriv);
 
-  generic_grad_op_3d<AlgTraitsWed6>(deriv, coords, gradop);
+  generic_grad_op<AlgTraitsWed6>(deriv, coords, gradop);
   //wed_grad_op(deriv, coords, gradop);
 }
 
@@ -663,52 +751,6 @@ void WedSCS::shifted_grad_op(
 }
 
 //--------------------------------------------------------------------------
-//-------- wedge_derivative --------------------------------------------------
-//--------------------------------------------------------------------------
-void WedSCS::wedge_derivative(
-  const int npts,
-  const double *intgLoc,
-  double *deriv)
-{
-  // d3d(c,s,j) = deriv[c + 3*(s + 6*j)] = deriv[c+3s+18j]
-
-  for (int  j = 0; j < npts; ++j) {
-
-    int k  = j*3;
-    const int p = 18*j;
-
-    const double r  = intgLoc[k];
-    const double s  = intgLoc[k+1];
-    const double t  = 1.0 - r - s;
-    const double xi = intgLoc[k + 2];
-
-    deriv[0+3*0+p] = -0.5 * (1.0 - xi);  // d(N_1)/ d(r)  = deriv[0]
-    deriv[1+3*0+p] = -0.5 * (1.0 - xi);  // d(N_1)/ d(s)  = deriv[1]
-    deriv[2+3*0+p] = -0.5 * t;           // d(N_1)/ d(xi) = deriv[2]
-
-    deriv[0+3*1+p] =  0.5 * (1.0 - xi);  // d(N_2)/ d(r)  = deriv[0 + 3]
-    deriv[1+3*1+p] =  0.0;               // d(N_2)/ d(s)  = deriv[1 + 3]
-    deriv[2+3*1+p] = -0.5 * r;           // d(N_2)/ d(xi) = deriv[2 + 3]
-
-    deriv[0+3*2+p] =  0.0;               // d(N_3)/ d(r)  = deriv[0 + 6]
-    deriv[1+3*2+p] =  0.5 * (1.0 - xi);  // d(N_3)/ d(s)  = deriv[1 + 6]
-    deriv[2+3*2+p] = -0.5 * s;           // d(N_3)/ d(xi) = deriv[2 + 6]
-
-    deriv[0+3*3+p] = -0.5 * (1.0 + xi);  // d(N_4)/ d(r)  = deriv[0 + 9]
-    deriv[1+3*3+p] = -0.5 * (1.0 + xi);  // d(N_4)/ d(s)  = deriv[1 + 9]
-    deriv[2+3*3+p] =  0.5 * t;           // d(N_4)/ d(xi) = deriv[2 + 9]
-
-    deriv[0+3*4+p] =  0.5 * (1.0 + xi);  // d(N_5)/ d(r)  = deriv[0 + 12]
-    deriv[1+3*4+p] =  0.0;               // d(N_5)/ d(s)  = deriv[1 + 12]
-    deriv[2+3*4+p] =  0.5 * r;           // d(N_5)/ d(xi) = deriv[2 + 12]
-
-    deriv[0+3*5+p] =  0.0;               // d(N_6)/ d(r)  = deriv[0 + 15]
-    deriv[1+3*5+p] =  0.5 * (1.0 + xi);  // d(N_6)/ d(s)  = deriv[1 + 15]
-    deriv[2+3*5+p] =  0.5 * s;           // d(N_6)/ d(xi) = deriv[2 + 15]
-  }
-}
-
-//--------------------------------------------------------------------------
 //-------- face_grad_op ----------------------------------------------------
 //--------------------------------------------------------------------------
 void
@@ -732,7 +774,7 @@ WedSCS::face_grad_op(
 
     for ( int k=0; k<npf; ++k ) {
 
-      const int row = 12*face_ordinal +k*ndim;
+      const int row = 12*face_ordinal + k*ndim;
       wedge_derivative(nface, &intgExpFace_[row], dpsi);
 
       SIERRA_FORTRAN(wed_gradient_operator) (
@@ -749,34 +791,9 @@ WedSCS::face_grad_op(
   }
 }
 
-void WedSCS::face_grad_op_tri(int face_ordinal, SharedMemView<DoubleType**>& coords, TriFaceGradType& gradop)
-{
-  using tri_traits = AlgTraitsTri3Wed6;
-  using quad_traits = AlgTraitsQuad4Wed6;
-
-  constexpr int derivSize = tri_traits::numFaceIp_ *  tri_traits::nodesPerElement_ * tri_traits::nDim_;
-
-  DoubleType psi[derivSize];
-  TriFaceGradType deriv(psi);
-
-  const int offset = (face_ordinal < 3) ? 0 : quad_traits::numFaceIp_ * face_ordinal;
-  wed_deriv(tri_traits::numFaceIp_, &intgExpFace_[tri_traits::nDim_ * offset], deriv);
-  generic_grad_op_3d<AlgTraitsWed6>(deriv, coords, gradop);
-}
-
-void WedSCS::face_grad_op_quad(int face_ordinal, SharedMemView<DoubleType**>& coords, QuadFaceGradType& gradop)
-{
-  using quad_traits = AlgTraitsQuad4Wed6;
-
-  constexpr int derivSize = quad_traits::numFaceIp_ *  quad_traits::nodesPerElement_ * quad_traits::nDim_;
-  DoubleType psi[derivSize];
-  QuadFaceGradType deriv(psi);
-
-  const int offset = (face_ordinal < 3) ? quad_traits::numFaceIp_ * face_ordinal : 0;
-  wed_deriv(quad_traits::numFaceIp_, &intgExpFace_[quad_traits::nDim_ * offset], deriv);
-  generic_grad_op_3d<AlgTraitsWed6>(deriv, coords, gradop);
-}
-
+//--------------------------------------------------------------------------
+//-------- face_grad_op ----------------------------------------------------
+//--------------------------------------------------------------------------
 void WedSCS::face_grad_op(
   int face_ordinal,
   SharedMemView<DoubleType**>& coords,
@@ -784,28 +801,39 @@ void WedSCS::face_grad_op(
 {
   using tri_traits = AlgTraitsTri3Wed6;
   using quad_traits = AlgTraitsQuad4Wed6;
+  constexpr int dim = 3;
 
-  constexpr int quad_derivSize = quad_traits::numFaceIp_ *  quad_traits::nodesPerElement_ * quad_traits::nDim_;
-  DoubleType quad_grad_temp[quad_derivSize];
-  QuadFaceGradType quad_gradop(quad_grad_temp,quad_traits::numFaceIp_,quad_traits::nodesPerElement_,quad_traits::nDim_);
-  face_grad_op_quad(face_ordinal, coords, quad_gradop);
+  constexpr int maxDerivSize = quad_traits::numFaceIp_ *  quad_traits::nodesPerElement_ * dim;
+  NALU_ALIGNED DoubleType psi[maxDerivSize];
+  const int numFaceIps = (face_ordinal < 3) ? quad_traits::numFaceIp_ : tri_traits::numFaceIp_;
+  SharedMemView<DoubleType***> deriv(psi, numFaceIps, AlgTraitsWed6::nodesPerElement_, dim);
 
-  constexpr int tri_derivSize = tri_traits::numFaceIp_ *  tri_traits::nodesPerElement_ * tri_traits::nDim_;
-  DoubleType tri_grad_temp[tri_derivSize];
-  TriFaceGradType tri_gradop(tri_grad_temp,tri_traits::numFaceIp_,tri_traits::nodesPerElement_,tri_traits::nDim_);
-  face_grad_op_tri(face_ordinal, coords, tri_gradop);
-
-  const int length = (face_ordinal < 3) ? quad_derivSize : tri_derivSize;
-  DoubleType triMask = (face_ordinal < 3) ? 0 : 1;
-  DoubleType* gradop_ptr = gradop.ptr_on_device();
-  for (int k = 0; k < length; ++k) {
-    gradop_ptr[k] = (1-triMask) * quad_grad_temp[k] + triMask * tri_grad_temp[k];
-  }
+  const int offset = quad_traits::numFaceIp_ * face_ordinal;
+  wed_deriv(numFaceIps, &intgExpFace_[dim * offset], deriv);
+  generic_grad_op<AlgTraitsWed6>(deriv, coords, gradop);
 }
-
 //--------------------------------------------------------------------------
 //-------- shifted_face_grad_op --------------------------------------------
 //--------------------------------------------------------------------------
+void WedSCS::shifted_face_grad_op(
+  int face_ordinal,
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop)
+{
+  using tri_traits = AlgTraitsTri3Wed6;
+  using quad_traits = AlgTraitsQuad4Wed6;
+  constexpr int dim = 3;
+
+  constexpr int maxDerivSize = quad_traits::numFaceIp_ *  quad_traits::nodesPerElement_ * dim;
+  NALU_ALIGNED DoubleType psi[maxDerivSize];
+  const int numFaceIps = (face_ordinal < 3) ? quad_traits::numFaceIp_ : tri_traits::numFaceIp_;
+  SharedMemView<DoubleType***> deriv(psi, numFaceIps, AlgTraitsWed6::nodesPerElement_, dim);
+
+  const int offset = sideOffset_[face_ordinal];
+  wed_deriv(numFaceIps, &intgExpFaceShift_[dim * offset], deriv);
+  generic_grad_op<AlgTraitsWed6>(deriv, coords, gradop);
+}
+
 void
 WedSCS::shifted_face_grad_op(
   const int nelem,
@@ -878,6 +906,15 @@ WedSCS::adjacentNodes()
 {
   // define L/R mappings
   return &lrscv_[0];
+}
+
+//--------------------------------------------------------------------------
+//-------- scsIpEdgeOrd ----------------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+WedSCS::scsIpEdgeOrd()
+{
+  return &scsIpEdgeOrd_[0];
 }
 
 //--------------------------------------------------------------------------

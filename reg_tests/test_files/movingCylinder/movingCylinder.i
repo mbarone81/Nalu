@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -51,6 +49,8 @@ realms:
   - name: mmRealm
     mesh: ../../mesh/waterChannel_cgs.g
     use_edges: no 
+    check_jacobians: yes
+
     equation_systems:
       name: theEqSys
       max_iterations: 1 
@@ -217,6 +217,10 @@ realms:
         - projected_nodal_gradient:
             momentum: element
             continuity: element
+
+      error_indicator:
+        type: pstab
+        frequency: 10
     
     output:
       output_data_base_name: fluid.e
@@ -228,6 +232,7 @@ realms:
        - pressure
        - mesh_velocity
        - div_mesh_velocity
+       - error_indicator
 
 Time_Integrators:
   - StandardTimeIntegrator:

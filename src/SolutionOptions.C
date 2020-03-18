@@ -46,28 +46,16 @@ SolutionOptions::SolutionOptions()
     referenceTemperature_(298.0),
     thermalExpansionCoeff_(1.0),
     stefanBoltzmann_(5.6704e-8),
-    nearestFaceEntrain_(0.0),
     includeDivU_(0.0),
-    mdotInterpRhoUTogether_(true),
     isTurbulent_(false),
     turbulenceModel_(LAMINAR),
     meshMotion_(false),
     meshDeformation_(false),
     externalMeshDeformation_(false),
-    activateUniformRefinement_(false),
-    uniformRefineSaveAfter_(false),
-    activateAdaptivity_(false),
+    initialMeshDisplacement_(false),
+    errorIndicatorActive_(false),
     errorIndicatorType_(EIT_NONE),
-    adaptivityFrequency_(0),
-    useMarker_(false),
-    refineFraction_(0.0),
-    unrefineFraction_(0.0),
-    physicalErrIndCriterion_(0.0),
-    physicalErrIndUnrefCriterionMultipler_(1.0),
-    maxRefinementNumberOfElementsFraction_(0),
-    adapterExtraOutput_(false),
-    useAdapter_(false),
-    maxRefinementLevel_(0),
+    errorIndicatorFrequency_(100),
     ncAlgGaussLabatto_(true),
     ncAlgUpwindAdvection_(true),
     ncAlgIncludePstab_(true),
@@ -87,17 +75,11 @@ SolutionOptions::SolutionOptions()
     eigenvaluePerturbDelta_(0.0),
     eigenvaluePerturbBiasTowards_(3),
     eigenvaluePerturbTurbKe_(0.0),
-    earthAngularVelocity_(7.2921159e-5),
-    latitude_(0.0),
-    raBoussinesqTimeScale_(-1.0),
     mdotAlgAccumulation_(0.0),
     mdotAlgInflow_(0.0),
     mdotAlgOpen_(0.0),
-    activateOpenMdotCorrection_(false),
-    mdotAlgOpenCorrection_(0.0),
-    mdotAlgOpenIpCount_(0),
-    mdotAlgOpenPost_(0.0),
-    quadType_("GaussLegendre")
+    quadType_("GaussLegendre"),
+    accousticallyCompressible_(false)
 {
   // nothing to do
 }
@@ -109,6 +91,10 @@ SolutionOptions::~SolutionOptions()
 {
   std::map<std::string, MeshMotionInfo *>::iterator it;
   for ( it = meshMotionInfoMap_.begin(); it!= meshMotionInfoMap_.end(); ++it ) {
+    MeshMotionInfo *info = it->second;
+    delete info;
+  }
+  for ( it = initialMeshDisplacementInfoMap_.begin(); it!= initialMeshDisplacementInfoMap_.end(); ++it ) {
     MeshMotionInfo *info = it->second;
     delete info;
   }
@@ -127,15 +113,9 @@ SolutionOptions::load(const YAML::Node & y_node)
   if(y_solution_options)
   {
     get_required(y_solution_options, "name", name_);
-    get_if_present(y_solution_options,
-                   "nearest_face_entrainment",
-                   nearestFaceEntrain_, nearestFaceEntrain_);
-
+    
     // divU factor for stress
     get_if_present(y_solution_options, "divU_stress_scaling", includeDivU_, includeDivU_);
-
-    // mdot interpolation procedure 
-    get_if_present(y_solution_options, "interp_rhou_together_for_mdot", mdotInterpRhoUTogether_, mdotInterpRhoUTogether_);
     
     // external mesh motion expected
     get_if_present(y_solution_options, "externally_provided_mesh_deformation", externalMeshDeformation_, externalMeshDeformation_);
@@ -154,6 +134,9 @@ SolutionOptions::load(const YAML::Node & y_node)
     // check for consolidated solver alg (AssembleSolver)
     get_if_present(y_solution_options, "use_consolidated_solver_algorithm", useConsolidatedSolverAlg_, useConsolidatedSolverAlg_);
 
+    // check for consolidated face-elem bc alg
+    get_if_present(y_solution_options, "use_consolidated_face_elem_bc_algorithm", useConsolidatedBcSolverAlg_, useConsolidatedBcSolverAlg_);
+
     // eigenvalue purturbation; over all dofs...
     get_if_present(y_solution_options, "eigenvalue_perturbation", eigenvaluePerturb_);
     get_if_present(y_solution_options, "eigenvalue_perturbation_delta", eigenvaluePerturbDelta_);
@@ -162,6 +145,9 @@ SolutionOptions::load(const YAML::Node & y_node)
     
     // quadrature type for high order
     get_if_present(y_solution_options, "high_order_quadrature_type", quadType_);
+
+    // accoustically compressible algorith
+    get_if_present(y_solution_options, "use_accoustically_compressible_algorithm", accousticallyCompressible_);
 
     // extract turbulence model; would be nice if we could parse an enum..
     std::string specifiedTurbModel;
@@ -206,14 +192,9 @@ SolutionOptions::load(const YAML::Node & y_node)
     get_if_present(y_solution_options, "input_variables_from_file_periodic_time",
       inputVariablesPeriodicTime_, inputVariablesPeriodicTime_);
 
-    // check for global correction algorithm
-    get_if_present(y_solution_options, "activate_open_mdot_correction",
-      activateOpenMdotCorrection_, activateOpenMdotCorrection_);
-
     // first set of options; hybrid, source, etc.
     const YAML::Node y_options = expect_sequence(y_solution_options, "options", required);
-    if (y_options)
-    {
+    if (y_options) {
       for (size_t ioption = 0; ioption < y_options.size(); ++ioption)
       {
         const YAML::Node y_option = y_options[ioption] ;
@@ -307,31 +288,12 @@ SolutionOptions::load(const YAML::Node & y_node)
           get_if_present(y_user_constants, "reference_temperature",  referenceTemperature_, referenceTemperature_);
           get_if_present(y_user_constants, "thermal_expansion_coefficient",  thermalExpansionCoeff_, thermalExpansionCoeff_);
           get_if_present(y_user_constants, "stefan_boltzmann",  stefanBoltzmann_, stefanBoltzmann_);
-          get_if_present(y_user_constants, "earth_angular_velocity", earthAngularVelocity_, earthAngularVelocity_);
-          get_if_present(y_user_constants, "latitude", latitude_, latitude_);
-          get_if_present(y_user_constants, "boussinesq_time_scale", raBoussinesqTimeScale_, raBoussinesqTimeScale_);
-
+        
           if (expect_sequence( y_user_constants, "gravity", optional) ) {
             const int gravSize = y_user_constants["gravity"].size();
             gravity_.resize(gravSize);
             for (int i = 0; i < gravSize; ++i ) {
               gravity_[i] = y_user_constants["gravity"][i].as<double>() ;
-            }
-          }
-          if (expect_sequence( y_user_constants, "east_vector", optional) ) {
-            const int vecSize = y_user_constants["east_vector"].size();
-            eastVector_.resize(vecSize);
-            for (int i = 0; i < vecSize; ++i ) {
-	      eastVector_[i] = y_user_constants["east_vector"][i].as<double>() ;
-              //y_user_constants["east_vector"][i] >> eastVector_[i];
-            }
-          }
-          if (expect_sequence( y_user_constants, "north_vector", optional) ) {
-            const int vecSize = y_user_constants["north_vector"].size();
-            northVector_.resize(vecSize);
-            for (int i = 0; i < vecSize; ++i ) {
-	      northVector_[i] = y_user_constants["north_vector"][i].as<double>() ;
-              //y_user_constants["north_vector"][i] >> northVector_[i];
             }
           }
         }
@@ -381,11 +343,10 @@ SolutionOptions::load(const YAML::Node & y_node)
 
     // second set of options: mesh motion... this means that the Realm will expect to provide rotation-based motion
     const YAML::Node y_mesh_motion = expect_sequence(y_solution_options, "mesh_motion", optional);
-    if (y_mesh_motion)
-    {
+    if (y_mesh_motion) {
       // mesh motion is active
       meshMotion_ = true;
-
+      
       // has a user stated that mesh motion is external?
       if ( meshDeformation_ ) {
         NaluEnv::self().naluOutputP0() << "mesh motion set to external (will prevail over mesh motion specification)!" << std::endl;
@@ -450,7 +411,77 @@ SolutionOptions::load(const YAML::Node & y_node)
         }
       }
     }
+    
+    // second set of options: initial mesh displacement 
+    const YAML::Node y_initial_mesh_displacement = expect_sequence(y_solution_options, "initial_mesh_displacement", optional);
+    if (y_initial_mesh_displacement) {
+      // initial displacement is activated
+      initialMeshDisplacement_ = true;
+      
+      for (size_t ioption = 0; ioption < y_initial_mesh_displacement.size(); ++ioption) {
+	const YAML::Node &y_option = y_initial_mesh_displacement[ioption];
+        
+	// extract mesh motion name
+	std::string motionName = "na";
+	get_required(y_option, "name", motionName);
 
+	// dummy omega
+	const double omega = 0.0;
+	
+	// now fill in name
+	std::vector<std::string> meshMotionBlock;
+	const YAML::Node &targets = y_option["target_name"];
+	if (targets.Type() == YAML::NodeType::Scalar) {
+	  meshMotionBlock.resize(1);
+	  meshMotionBlock[0] = targets.as<std::string>() ;
+	}
+	else {
+	  meshMotionBlock.resize(targets.size());
+	  for (size_t i=0; i < targets.size(); ++i) {
+	    meshMotionBlock[i] = targets[i].as<std::string>() ;
+	  }
+	}
+        
+	// look for centroid coordinates; optional, provide a default
+	std::vector<double> cCoordsVec(3,0.0); 
+	const YAML::Node coordsVecNode = y_option["centroid_coordinates"];
+	if ( coordsVecNode ) {
+	  for ( size_t i = 0; i < coordsVecNode.size(); ++i )
+	    cCoordsVec[i] = coordsVecNode[i].as<double>();
+	}
+	
+	// check for calculation of centroid
+	bool computeCentroid = false;
+	get_if_present(y_option, "compute_centroid", computeCentroid, computeCentroid);
+	// user specified prevails
+	if ( coordsVecNode && computeCentroid ) {
+	  NaluEnv::self().naluOutputP0() 
+	    << "centroid_coordinates and compute_centroid both active, user-specified centroid will prevail" << std::endl;
+	  computeCentroid = false;
+	}
+	
+	// look for unit vector; provide default
+	std::vector<double> unitVec(3,0.0); 
+	const YAML::Node uV = y_option["unit_vector"];
+	if ( uV ) {
+	  for ( size_t i = 0; i < uV.size(); ++i )
+	    unitVec[i] = uV[i].as<double>() ;
+	}
+	else {
+	  NaluEnv::self().naluOutputP0() << "SolutionOptions::load() unit_vector not supplied; will use 0,0,1" << std::endl;
+	  unitVec[2] = 1.0;
+	}
+	
+	// extract angle
+	double theAngle = 0.0;
+	get_if_present(y_option, "angle", theAngle, theAngle);
+        
+	MeshMotionInfo *meshInfo = new MeshMotionInfo(meshMotionBlock, omega, cCoordsVec, unitVec, computeCentroid, theAngle);
+	// set the map
+	initialMeshDisplacementInfoMap_[motionName] = meshInfo;
+      }
+    }
+  
     const YAML::Node fix_pressure = expect_map(y_solution_options, "fix_pressure_at_node", optional);
     if (fix_pressure) {
       needPressureReference_ = true;
@@ -475,12 +506,8 @@ SolutionOptions::load(const YAML::Node & y_node)
           fix_pressure["search_target_part"].as<std::vector<std::string>>();
         if (fix_pressure["search_method"]) {
           std::string searchMethodName = fix_pressure["search_method"].as<std::string>();
-          if (searchMethodName == "boost_rtree")
-            fixPressureInfo_->searchMethod_ = stk::search::BOOST_RTREE;
-          else if (searchMethodName == "stk_kdtree")
-            fixPressureInfo_->searchMethod_ = stk::search::KDTREE;
-          else
-            NaluEnv::self().naluOutputP0() << "ABL Fix Pressure: Search will use stk_kdtree"
+          if (searchMethodName != "stk_kdtree")
+            NaluEnv::self().naluOutputP0() << "FixPressureAtNodeInfo::search_method only supports stk_kdtree"
                                            << std::endl;
         }
       }
@@ -489,160 +516,69 @@ SolutionOptions::load(const YAML::Node & y_node)
       }
     }
 
-    // uniform refinement options
-    {
-      const YAML::Node y_uniform = expect_map(y_solution_options, "uniform_refinement", optional);
-      if (y_uniform) {
-
-        NaluEnv::self().naluOutputP0() << "Uniform refinement option found." << std::endl;
-
-        const YAML::Node y_refine_at = expect_sequence(y_uniform, "refine_at", required);
-        if (y_refine_at) {
-          activateUniformRefinement_ = true;
-          std::vector<int> mvec;
-          mvec = y_refine_at.as<std::vector<int> >() ;
-          for (unsigned i=0; i < mvec.size(); ++i) {
-            NaluEnv::self().naluOutputP0() << "Uniform Refinement: refine_at[" << i << "]= " << mvec[i] << std::endl;
-
-            if (i > 0 && mvec[i-1] > mvec[i])
-              throw std::runtime_error("refine_at option error: "+ NaluParsingHelper::info(y_refine_at));
-          }
-          refineAt_ = mvec;
-        }
-        else {
-          throw std::runtime_error("refine_at option missing: "+ NaluParsingHelper::info(y_uniform));
-        }
-        get_if_present(y_uniform, "save_mesh", uniformRefineSaveAfter_, uniformRefineSaveAfter_);
-        NaluEnv::self().naluOutputP0() << "Uniform Refinement: save_mesh= " << uniformRefineSaveAfter_ << std::endl;
-      }
-    }
-
-    // adaptivity options
-    const YAML::Node y_adaptivity = expect_map(y_solution_options, "adaptivity", optional);
-    if (y_adaptivity) {
-
-#if defined (NALU_USES_PERCEPT)
-      NaluEnv::self().naluOutputP0() << "Adaptivity Active. tested on Tri, Tet and quad meshes " << std::endl;
-#else
-      throw std::runtime_error("Adaptivity not supported in NaluV1.0:");
-#endif
+    // error indicator option
+    const YAML::Node y_error_indicator = expect_map(y_solution_options, "error_indicator", optional);
+    if (y_error_indicator) {
       
-      get_if_present(y_adaptivity, "frequency", adaptivityFrequency_, adaptivityFrequency_);
-      get_if_present(y_adaptivity, "activate", activateAdaptivity_, activateAdaptivity_);
+      errorIndicatorActive_ = true;
 
-      if (activateAdaptivity_ && adaptivityFrequency_<1) {
-	throw std::runtime_error("When adaptivity is active, the frequency must by greater than 0:" + NaluParsingHelper::info(y_adaptivity));
-      }
-
-      const YAML::Node y_error_indicator = expect_map(y_adaptivity, "error_indicator", required);
-      if (y_error_indicator)
-      {
-        std::string type = "";
-        get_if_present(y_error_indicator, "type", type, type);
-        if (type == "pstab")
-          errorIndicatorType_ = EIT_PSTAB;
-        else if (type == "limiter")
-          errorIndicatorType_ = EIT_LIMITER;
-
-        // error catching and user output
-        if ( errorIndicatorType_ == EIT_NONE ) {
-          NaluEnv::self().naluOutputP0() << "no or unknown error indicator was provided; will choose pstab.  Input value= " << type << std::endl;
-          errorIndicatorType_ = EIT_PSTAB;
-        }
-
-        // for debugging/testing use only
-        if (type == "simple.vorticity_dx")
-          errorIndicatorType_ = EIT_SIMPLE_VORTICITY_DX;
-        else if (type == "simple.vorticity")
-          errorIndicatorType_ = EIT_SIMPLE_VORTICITY;
-        else if (type == "simple.dudx2")
-          errorIndicatorType_ = EIT_SIMPLE_DUDX2;
-        if (errorIndicatorType_ & EIT_SIMPLE_BASE) {
-          NaluEnv::self().naluOutputP0() << "WARNING: Found debug/test error inidicator type. Input value= " << type << std::endl;
-        }
-      }
+      std::string type = "pstab";
+      get_if_present(y_error_indicator, "type", type, type);
+      if (type == "pstab")
+        errorIndicatorType_ = EIT_PSTAB;
+      else if (type == "limiter")
+        errorIndicatorType_ = EIT_LIMITER;
+      else if (type == "simple.vorticity_dx")
+        errorIndicatorType_ = EIT_SIMPLE_VORTICITY_DX;
+      else if (type == "simple.vorticity")
+        errorIndicatorType_ = EIT_SIMPLE_VORTICITY;
+      else if (type == "simple.dudx2")
+        errorIndicatorType_ = EIT_SIMPLE_DUDX2;
+    
+      get_if_present(y_error_indicator, "frequency", errorIndicatorFrequency_, errorIndicatorFrequency_);
 
       NaluEnv::self().naluOutputP0() << std::endl;
-      NaluEnv::self().naluOutputP0() << "Adaptivity Options Review: " << std::endl;
-      NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
-      NaluEnv::self().naluOutputP0() << " pstab: " << (errorIndicatorType_ & EIT_PSTAB)
-                      << " limit: " << (errorIndicatorType_ & EIT_LIMITER)
-                      << " freq : " << adaptivityFrequency_ << std::endl;
-
-      const YAML::Node y_adapter = expect_map(y_adaptivity, "adapter", optional);
-      bool marker_optional = true;
-      if (y_adapter) {
-        get_if_present(y_adapter, "activate", useAdapter_, useAdapter_);
-        get_if_present(y_adapter, "max_refinement_level", maxRefinementLevel_, maxRefinementLevel_);
-        get_if_present(y_adapter, "extra_output", adapterExtraOutput_, adapterExtraOutput_);
-        marker_optional = false;
-      }
-
-      const YAML::Node y_marker = expect_map(y_adaptivity, "marker", marker_optional);
-      if (y_marker) {
-        bool defaultUseMarker = true;
-        get_if_present(y_marker, "activate", useMarker_, defaultUseMarker);
-        get_if_present(y_marker, "refine_fraction", refineFraction_, refineFraction_);
-        get_if_present(y_marker, "unrefine_fraction", unrefineFraction_, unrefineFraction_);
-        get_if_present(y_marker, "max_number_elements_fraction", maxRefinementNumberOfElementsFraction_, maxRefinementNumberOfElementsFraction_);
-        get_if_present(y_marker, "physical_error_criterion", physicalErrIndCriterion_, physicalErrIndCriterion_);
-        get_if_present(y_marker, "physical_error_criterion_unrefine_multiplier", physicalErrIndUnrefCriterionMultipler_, physicalErrIndUnrefCriterionMultipler_);
-      }
-
-
-#define OUTN(a) " " << #a << " = " << a
-
-      NaluEnv::self().naluOutputP0() << "Adapt: options: "
-                      << OUTN(activateAdaptivity_)
-                      << OUTN(errorIndicatorType_)
-                      << OUTN(adaptivityFrequency_) << "\n"
-                      << OUTN(useMarker_)
-                      << OUTN(refineFraction_)
-                      << OUTN(unrefineFraction_)
-                      << OUTN(physicalErrIndCriterion_)
-                      << OUTN(physicalErrIndUnrefCriterionMultipler_)
-                      << OUTN(maxRefinementNumberOfElementsFraction_) << "\n"
-                      << OUTN(useAdapter_)
-                      << OUTN(maxRefinementLevel_)
-                      << std::endl;
-
+      NaluEnv::self().naluOutputP0() << "Error Indicator Options Review: " << std::endl;
+      NaluEnv::self().naluOutputP0() << "================================" << std::endl;
+      NaluEnv::self().naluOutputP0() << " Type: " << type << std::endl;
+      NaluEnv::self().naluOutputP0() << " Frequency: " << errorIndicatorFrequency_ << std::endl;
     }
-  }
 
-   NaluEnv::self().naluOutputP0() << std::endl;
-   NaluEnv::self().naluOutputP0() << "Turbulence Model Review:   " << std::endl;
-   NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
-   NaluEnv::self().naluOutputP0() << "Turbulence Model is: "
-       << TurbulenceModelNames[turbulenceModel_] << " " << isTurbulent_ <<std::endl;
-
-   // over view PPE specifications
-   NaluEnv::self().naluOutputP0() << std::endl;
-   NaluEnv::self().naluOutputP0() << "PPE review:   " << std::endl;
-   NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
-
-   if ( cvfemShiftMdot_ )
-     NaluEnv::self().naluOutputP0() << "Shifted CVFEM mass flow rate" << std::endl;
-   if ( cvfemReducedSensPoisson_)
-     NaluEnv::self().naluOutputP0() << "Reduced sensitivities CVFEM Poisson" << std::endl;
-
-   // sanity checks; if user asked for shifted Poisson, then user will have reduced sensitivities
-   if ( get_shifted_grad_op("pressure") ) {
-     if ( !cvfemReducedSensPoisson_) {
-       NaluEnv::self().naluOutputP0() << "Reduced sensitivities CVFEM Poisson will be set since reduced grad_op is requested" << std::endl;
-       cvfemReducedSensPoisson_ = true;
-     }
-   }
-   
-   // overview gradient operator for CVFEM
-   if ( shiftedGradOpMap_.size() > 0 ) {
-     NaluEnv::self().naluOutputP0() << std::endl;
-     NaluEnv::self().naluOutputP0() << "CVFEM gradient operator review:   " << std::endl;
-     NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
-     for ( const auto& shiftIt : shiftedGradOpMap_ ) {
-       NaluEnv::self().naluOutputP0() << " dof: " << shiftIt.first
-                                      << " shifted: " << (shiftIt.second ? "yes" : "no") << std::endl; 
-     }
-   }
+    NaluEnv::self().naluOutputP0() << std::endl;
+    NaluEnv::self().naluOutputP0() << "Turbulence Model Review:   " << std::endl;
+    NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
+    NaluEnv::self().naluOutputP0() << "Turbulence Model is: "
+                                   << TurbulenceModelNames[turbulenceModel_] << " " << isTurbulent_ <<std::endl;
+    
+    // over view PPE specifications
+    NaluEnv::self().naluOutputP0() << std::endl;
+    NaluEnv::self().naluOutputP0() << "PPE review:   " << std::endl;
+    NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
+    
+    if ( cvfemShiftMdot_ )
+      NaluEnv::self().naluOutputP0() << "Shifted CVFEM mass flow rate" << std::endl;
+    if ( cvfemReducedSensPoisson_)
+      NaluEnv::self().naluOutputP0() << "Reduced sensitivities CVFEM Poisson" << std::endl;
+    
+    // sanity checks; if user asked for shifted Poisson, then user will have reduced sensitivities
+    if ( get_shifted_grad_op("pressure") ) {
+      if ( !cvfemReducedSensPoisson_) {
+        NaluEnv::self().naluOutputP0() << "Reduced sensitivities CVFEM Poisson will be set since reduced grad_op is requested" << std::endl;
+        cvfemReducedSensPoisson_ = true;
+      }
+    }
+    
+    // overview gradient operator for CVFEM
+    if ( shiftedGradOpMap_.size() > 0 ) {
+      NaluEnv::self().naluOutputP0() << std::endl;
+      NaluEnv::self().naluOutputP0() << "CVFEM gradient operator review:   " << std::endl;
+      NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
+      for ( const auto& shiftIt : shiftedGradOpMap_ ) {
+        NaluEnv::self().naluOutputP0() << " dof: " << shiftIt.first
+                                       << " shifted: " << (shiftIt.second ? "yes" : "no") << std::endl; 
+      }
+    }
+  } 
 }
 
 //--------------------------------------------------------------------------
@@ -777,9 +713,35 @@ SolutionOptions::get_turb_model_constant(
   }
 }
 
-bool SolutionOptions::has_set_boussinesq_time_scale()
+bool
+SolutionOptions::get_noc_usage(
+  const std::string &dofName ) const
 {
-  return (raBoussinesqTimeScale_ > std::numeric_limits<double>::min());
+  bool factor = nocDefault_;
+  std::map<std::string, bool>::const_iterator iter
+    = nocMap_.find(dofName);
+  if (iter != nocMap_.end()) {
+    factor = (*iter).second;
+  }
+  return factor;
+}
+
+double
+SolutionOptions::get_turb_prandtl(
+  const std::string &dofName ) const
+{
+  double factor = turbPrDefault_;
+  std::map<std::string, double>::const_iterator iter
+    = turbPrMap_.find(dofName);
+  if (iter != turbPrMap_.end()) {
+    factor = (*iter).second;
+  }
+  return factor;
+}
+
+void SolutionOptions::set_consolidated_bc_solver_alg()
+{
+  useConsolidatedBcSolverAlg_ = true;
 }
 
 } // namespace nalu

@@ -6,75 +6,80 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <TurbKineticEnergyEquationSystem.h>
-#include <AlgorithmDriver.h>
-#include <AssembleScalarEdgeOpenSolverAlgorithm.h>
-#include <AssembleScalarEdgeSolverAlgorithm.h>
-#include <AssembleScalarElemSolverAlgorithm.h>
-#include <AssembleScalarElemOpenSolverAlgorithm.h>
-#include <AssembleScalarNonConformalSolverAlgorithm.h>
-#include <AssembleNodeSolverAlgorithm.h>
-#include <AssembleNodalGradAlgorithmDriver.h>
-#include <AssembleNodalGradEdgeAlgorithm.h>
-#include <AssembleNodalGradElemAlgorithm.h>
-#include <AssembleNodalGradBoundaryAlgorithm.h>
-#include <AssembleNodalGradNonConformalAlgorithm.h>
-#include <AuxFunctionAlgorithm.h>
-#include <ComputeTurbKineticEnergyWallFunctionAlgorithm.h>
-#include <ConstantAuxFunction.h>
-#include <CopyFieldAlgorithm.h>
-#include <DirichletBC.h>
-#include <EffectiveDiffFluxCoeffAlgorithm.h>
-#include <EffectiveSSTDiffFluxCoeffAlgorithm.h>
-#include <EquationSystem.h>
-#include <EquationSystems.h>
-#include <Enums.h>
-#include <FieldFunctions.h>
-#include <LinearSolvers.h>
-#include <LinearSolver.h>
-#include <LinearSystem.h>
-#include <NaluEnv.h>
-#include <NaluParsing.h>
-#include <ProjectedNodalGradientEquationSystem.h>
-#include <Realm.h>
-#include <Realms.h>
-#include <ScalarGclNodeSuppAlg.h>
-#include <ScalarMassBackwardEulerNodeSuppAlg.h>
-#include <ScalarMassBDF2NodeSuppAlg.h>
-#include <Simulation.h>
-#include <SolutionOptions.h>
-#include <TimeIntegrator.h>
-#include <TurbKineticEnergyKsgsNodeSourceSuppAlg.h>
-#include <TurbKineticEnergySSTNodeSourceSuppAlg.h>
-#include <TurbKineticEnergySSTDESNodeSourceSuppAlg.h>
-#include <TurbKineticEnergyKsgsBuoyantElemSuppAlg.h>
-#include <TurbKineticEnergyRodiNodeSourceSuppAlg.h>
-
-#include <SolverAlgorithmDriver.h>
+#include "TurbKineticEnergyEquationSystem.h"
+#include "AlgorithmDriver.h"
+#include "AssembleScalarEdgeOpenSolverAlgorithm.h"
+#include "AssembleScalarEdgeSolverAlgorithm.h"
+#include "AssembleScalarElemSolverAlgorithm.h"
+#include "AssembleScalarElemOpenSolverAlgorithm.h"
+#include "AssembleScalarNonConformalSolverAlgorithm.h"
+#include "AssembleNodeSolverAlgorithm.h"
+#include "AssembleNodalGradAlgorithmDriver.h"
+#include "AssembleNodalGradEdgeAlgorithm.h"
+#include "AssembleNodalGradElemAlgorithm.h"
+#include "AssembleNodalGradBoundaryAlgorithm.h"
+#include "AssembleNodalGradNonConformalAlgorithm.h"
+#include "AuxFunctionAlgorithm.h"
+#include "ComputeTurbKineticEnergyWallFunctionAlgorithm.h"
+#include "ConstantAuxFunction.h"
+#include "CopyFieldAlgorithm.h"
+#include "DirichletBC.h"
+#include "EffectiveDiffFluxCoeffAlgorithm.h"
+#include "EffectiveSSTDiffFluxCoeffAlgorithm.h"
+#include "EquationSystem.h"
+#include "EquationSystems.h"
+#include "Enums.h"
+#include "FieldFunctions.h"
+#include "LinearSolvers.h"
+#include "LinearSolver.h"
+#include "LinearSystem.h"
+#include "NaluEnv.h"
+#include "NaluParsing.h"
+#include "ProjectedNodalGradientEquationSystem.h"
+#include "Realm.h"
+#include "Realms.h"
+#include "ScalarGclNodeSuppAlg.h"
+#include "ScalarMassBackwardEulerNodeSuppAlg.h"
+#include "ScalarMassBDF2NodeSuppAlg.h"
+#include "Simulation.h"
+#include "SolverAlgorithmDriver.h"
+#include "SolutionOptions.h"
+#include "TimeIntegrator.h"
+#include "TurbKineticEnergyKsgsNodeSourceSuppAlg.h"
+#include "TurbKineticEnergySSTNodeSourceSuppAlg.h"
+#include "TurbKineticEnergySSTDESNodeSourceSuppAlg.h"
+#include "TurbKineticEnergyKsgsBuoyantElemSuppAlg.h"
+#include "TurbKineticEnergyRodiNodeSourceSuppAlg.h"
 
 // template for kernels
-#include <AlgTraits.h>
-#include <kernel/KernelBuilder.h>
-#include <kernel/KernelBuilderLog.h>
+#include "AlgTraits.h"
+#include "kernel/KernelBuilder.h"
+#include "kernel/KernelBuilderLog.h"
 
 // kernels
-#include <AssembleElemSolverAlgorithm.h>
-#include <kernel/ScalarMassElemKernel.h>
-#include <kernel/ScalarAdvDiffElemKernel.h>
-#include <kernel/ScalarUpwAdvDiffElemKernel.h>
-#include <kernel/TurbKineticEnergyKsgsSrcElemKernel.h>
-#include <kernel/TurbKineticEnergyKsgsDesignOrderSrcElemKernel.h>
+#include "AssembleElemSolverAlgorithm.h"
+#include "kernel/ScalarMassElemKernel.h"
+#include "kernel/ScalarAdvDiffElemKernel.h"
+#include "kernel/ScalarUpwAdvDiffElemKernel.h"
+#include "kernel/TurbKineticEnergyKsgsSrcElemKernel.h"
+#include "kernel/TurbKineticEnergyKsgsDesignOrderSrcElemKernel.h"
+#include "kernel/TurbKineticEnergyRodiSrcElemKernel.h"
+#include "kernel/TurbKineticEnergySSTSrcElemKernel.h"
+#include "kernel/TurbKineticEnergySSTDESSrcElemKernel.h"
+
+// bc kernels
+#include "kernel/ScalarOpenAdvElemKernel.h"
 
 // nso
-#include <nso/ScalarNSOElemKernel.h>
-#include <nso/ScalarNSOKeElemSuppAlg.h>
+#include "nso/ScalarNSOElemKernel.h"
+#include "nso/ScalarNSOKeElemSuppAlg.h"
 
 // deprecated
-#include <ScalarMassElemSuppAlgDep.h>
-#include <nso/ScalarNSOKeElemSuppAlg.h>
-#include <nso/ScalarNSOElemSuppAlgDep.h>
+#include "ScalarMassElemSuppAlgDep.h"
+#include "nso/ScalarNSOKeElemSuppAlg.h"
+#include "nso/ScalarNSOElemSuppAlgDep.h"
 
-#include <overset/UpdateOversetFringeAlgorithmDriver.h>
+#include "overset/UpdateOversetFringeAlgorithmDriver.h"
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -96,6 +101,9 @@
 
 // stk_util
 #include <stk_util/parallel/ParallelReduce.hpp>
+
+// nalu utility
+#include <utils/StkHelpers.h>
 
 namespace sierra{
 namespace nalu{
@@ -174,24 +182,24 @@ TurbKineticEnergyEquationSystem::register_nodal_fields(
 
   // register dof; set it as a restart variable
   tke_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_ke", numStates));
-  stk::mesh::put_field(*tke_, *part);
+  stk::mesh::put_field_on_mesh(*tke_, *part, nullptr);
   realm_.augment_restart_variable_list("turbulent_ke");
 
   dkdx_ =  &(meta_data.declare_field<VectorFieldType>(stk::topology::NODE_RANK, "dkdx"));
-  stk::mesh::put_field(*dkdx_, *part, nDim);
+  stk::mesh::put_field_on_mesh(*dkdx_, *part, nDim, nullptr);
 
   // delta solution for linear solver; share delta since this is a split system
   kTmp_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "pTmp"));
-  stk::mesh::put_field(*kTmp_, *part);
+  stk::mesh::put_field_on_mesh(*kTmp_, *part, nullptr);
 
   visc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "viscosity"));
-  stk::mesh::put_field(*visc_, *part);
+  stk::mesh::put_field_on_mesh(*visc_, *part, nullptr);
 
   tvisc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity"));
-  stk::mesh::put_field(*tvisc_, *part);
+  stk::mesh::put_field_on_mesh(*tvisc_, *part, nullptr);
 
   evisc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "effective_viscosity_tke"));
-  stk::mesh::put_field(*evisc_, *part);
+  stk::mesh::put_field_on_mesh(*evisc_, *part, nullptr);
 
   // make sure all states are properly populated (restart can handle this)
   if ( numStates > 2 && (!realm_.restarted_simulation() || realm_.support_inconsistent_restart()) ) {
@@ -418,11 +426,27 @@ TurbKineticEnergyEquationSystem::register_interior_algorithm(
       build_topo_kernel_if_requested<TurbKineticEnergyKsgsSrcElemKernel>
         (partTopo, *this, activeKernels, "ksgs",
          realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs);
-      
+
       build_topo_kernel_if_requested<TurbKineticEnergyKsgsDesignOrderSrcElemKernel>
         (partTopo, *this, activeKernels, "design_order_ksgs",
          realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs);
-      
+
+      build_topo_kernel_if_requested<TurbKineticEnergySSTSrcElemKernel>
+        (partTopo, *this, activeKernels, "sst",
+         realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs, false);
+
+      build_topo_kernel_if_requested<TurbKineticEnergySSTSrcElemKernel>
+        (partTopo, *this, activeKernels, "lumped_sst",
+         realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs, true);
+
+      build_topo_kernel_if_requested<TurbKineticEnergySSTDESSrcElemKernel>
+        (partTopo, *this, activeKernels, "sst_des",
+         realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs, false);
+
+      build_topo_kernel_if_requested<TurbKineticEnergySSTDESSrcElemKernel>
+        (partTopo, *this, activeKernels, "lumped_sst_des",
+         realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs, true);
+
       build_topo_kernel_if_requested<ScalarNSOElemKernel>
         (partTopo, *this, activeKernels, "NSO_2ND",
          realm_.bulk_data(), *realm_.solutionOptions_, tke_, dkdx_, evisc_, 0.0, 0.0, dataPreReqs);
@@ -438,6 +462,10 @@ TurbKineticEnergyEquationSystem::register_interior_algorithm(
       build_topo_kernel_if_requested<ScalarNSOElemKernel>
         (partTopo, *this, activeKernels, "NSO_4TH_ALT",
          realm_.bulk_data(), *realm_.solutionOptions_, tke_, dkdx_, evisc_, 1.0, 1.0, dataPreReqs);
+
+      build_topo_kernel_if_requested<TurbKineticEnergyRodiSrcElemKernel>
+        (partTopo, *this, activeKernels, "rodi",
+         realm_.bulk_data(), *realm_.solutionOptions_, dataPreReqs);
 
       report_invalid_supp_alg_names();
       report_built_supp_alg_names();
@@ -495,7 +523,7 @@ TurbKineticEnergyEquationSystem::register_inflow_bc(
 
   // register boundary data; tke_bc
   ScalarFieldType *theBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "tke_bc"));
-  stk::mesh::put_field(*theBcField, *part);
+  stk::mesh::put_field_on_mesh(*theBcField, *part, nullptr);
 
   // extract the value for user specified tke and save off the AuxFunction
   InflowUserData userData = inflowBCData.userData_;
@@ -563,7 +591,7 @@ TurbKineticEnergyEquationSystem::register_inflow_bc(
 void
 TurbKineticEnergyEquationSystem::register_open_bc(
   stk::mesh::Part *part,
-  const stk::topology &/*theTopo*/,
+  const stk::topology &partTopo,
   const OpenBoundaryConditionData &openBCData)
 {
 
@@ -577,7 +605,7 @@ TurbKineticEnergyEquationSystem::register_open_bc(
 
   // register boundary data; tke_bc
   ScalarFieldType *theBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "open_tke_bc"));
-  stk::mesh::put_field(*theBcField, *part);
+  stk::mesh::put_field_on_mesh(*theBcField, *part, nullptr);
 
   // extract the value for user specified tke and save off the AuxFunction
   OpenUserData userData = openBCData.userData_;
@@ -610,19 +638,45 @@ TurbKineticEnergyEquationSystem::register_open_bc(
   }
 
   // solver open; lhs
-  std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi = solverAlgDriver_->solverAlgMap_.find(algType);
-  if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
-    SolverAlgorithm *theAlg = NULL;
-    if ( realm_.realmUsesEdges_ ) {
-      theAlg = new AssembleScalarEdgeOpenSolverAlgorithm(realm_, part, this, tke_, theBcField, &dkdxNone, evisc_);
+  if ( realm_.solutionOptions_->useConsolidatedBcSolverAlg_ ) {
+    
+    auto& solverAlgMap = solverAlgDriver_->solverAlgorithmMap_;
+    
+    stk::topology elemTopo = get_elem_topo(realm_, *part);
+    
+    AssembleFaceElemSolverAlgorithm* faceElemSolverAlg = nullptr;
+    bool solverAlgWasBuilt = false;
+    
+    std::tie(faceElemSolverAlg, solverAlgWasBuilt) 
+      = build_or_add_part_to_face_elem_solver_alg(algType, *this, *part, elemTopo, solverAlgMap, "open");
+    
+    auto& activeKernels = faceElemSolverAlg->activeKernels_;
+    
+    if (solverAlgWasBuilt) {
+      
+      build_face_elem_topo_kernel_automatic<ScalarOpenAdvElemKernel>
+        (partTopo, elemTopo, *this, activeKernels, "turbulent_ke_open",
+         realm_.meta_data(), *realm_.solutionOptions_,
+         this, tke_, theBcField, dkdx_, evisc_, 
+         faceElemSolverAlg->faceDataNeeded_, faceElemSolverAlg->elemDataNeeded_);
+      
     }
-    else {
-      theAlg = new AssembleScalarElemOpenSolverAlgorithm(realm_, part, this, tke_, theBcField, &dkdxNone, evisc_);
-    }
-    solverAlgDriver_->solverAlgMap_[algType] = theAlg;
   }
   else {
-    itsi->second->partVec_.push_back(part);
+    std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi = solverAlgDriver_->solverAlgMap_.find(algType);
+    if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
+      SolverAlgorithm *theAlg = NULL;
+      if ( realm_.realmUsesEdges_ ) {
+        theAlg = new AssembleScalarEdgeOpenSolverAlgorithm(realm_, part, this, tke_, theBcField, &dkdxNone, evisc_);
+      }
+      else {
+        theAlg = new AssembleScalarElemOpenSolverAlgorithm(realm_, part, this, tke_, theBcField, &dkdxNone, evisc_);
+      }
+      solverAlgDriver_->solverAlgMap_[algType] = theAlg;
+    }
+    else {
+      itsi->second->partVec_.push_back(part);
+    }
   }
 
 }
@@ -648,19 +702,20 @@ TurbKineticEnergyEquationSystem::register_wall_bc(
 
   // register boundary data; tke_bc
   ScalarFieldType *theBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "tke_bc"));
-  stk::mesh::put_field(*theBcField, *part);
+  stk::mesh::put_field_on_mesh(*theBcField, *part, nullptr);
 
   // extract the value for user specified tke and save off the AuxFunction
   WallUserData userData = wallBCData.userData_;
   std::string tkeName = "turbulent_ke";
   const bool tkeSpecified = bc_data_specified(userData, tkeName);
-  bool wallFunctionApproach = userData.wallFunctionApproach_;
-  if ( tkeSpecified && wallFunctionApproach ) {
+  bool anyWallFunctionActivated = userData.wallFunctionApproach_ || userData.wallFunctionProjectedApproach_;
+
+  if ( tkeSpecified && anyWallFunctionActivated ) {
     NaluEnv::self().naluOutputP0() << "Both wall function and tke specified; will go with dirichlet" << std::endl;
-    wallFunctionApproach = false;
+    anyWallFunctionActivated = false;
   }
 
-  if ( wallFunctionApproach ) {
+  if ( anyWallFunctionActivated ) {
 
     // create wallFunctionParamsAlgDriver
     if ( NULL == wallFunctionTurbKineticEnergyAlgDriver_)
@@ -668,7 +723,7 @@ TurbKineticEnergyEquationSystem::register_wall_bc(
 
     // need to register the assembles wall value for tke; can not share with tke_bc
     ScalarFieldType *theAssembledField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "wall_model_tke_bc"));
-    stk::mesh::put_field(*theAssembledField, *part);
+    stk::mesh::put_field_on_mesh(*theAssembledField, *part, nullptr);
 
     // wall function value will prevail at bc intersections
     std::map<AlgorithmType, Algorithm *>::iterator it_tke =
@@ -844,6 +899,13 @@ TurbKineticEnergyEquationSystem::register_overset_bc()
 
   theAlg->fields_.push_back(
     std::unique_ptr<OversetFieldData>(new OversetFieldData(tke_,1,1)));
+
+  if ( realm_.has_mesh_motion() ) {
+    UpdateOversetFringeAlgorithmDriver* theAlgPost = new UpdateOversetFringeAlgorithmDriver(realm_,false);
+    // Perform fringe updates after all equation system solves (ideally on the post_time_step)
+    equationSystems_.postIterAlgDriver_.push_back(theAlgPost);
+    theAlgPost->fields_.push_back(std::unique_ptr<OversetFieldData>(new OversetFieldData(tke_,1,1)));
+  }
 }
 
 //--------------------------------------------------------------------------

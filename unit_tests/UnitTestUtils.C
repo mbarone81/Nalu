@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <NaluEnv.h>
+#include "NaluEnv.h"
 
 #include <stk_io/StkMeshIoBroker.hpp>
 #include <stk_mesh/base/BulkData.hpp>
@@ -14,12 +14,8 @@
 #include <stk_mesh/base/GetEntities.hpp>
 #include <stk_topology/topology.hpp>
 
-#include <master_element/TensorOps.h>
-#include <element_promotion/PromotedPartHelper.h>
-#include <element_promotion/ElementDescription.h>
-#include <element_promotion/PromoteElement.h>
-#include <element_promotion/PromotedElementIO.h>
-#include <nalu_make_unique.h>
+#include "master_element/TensorOps.h"
+#include "nalu_make_unique.h"
 
 #include "UnitTestUtils.h"
 #include "UnitTestKokkosUtils.h"
@@ -89,42 +85,6 @@ void fill_hex8_mesh(const std::string& meshSpec, stk::mesh::BulkData& bulk)
     stk::mesh::create_exposed_block_boundary_sides(bulk,  blockPart, {&surfPart});
 }
 
-void fill_and_promote_hex_mesh(const std::string& meshSpec, stk::mesh::BulkData& bulk, int polyOrder)
-{
-    stk::io::StkMeshIoBroker io(bulk.parallel());
-    io.set_bulk_data(bulk);
-    io.add_mesh_database(meshSpec, stk::io::READ_MESH);
-    io.create_input_mesh();
-
-    stk::mesh::MetaData& meta = bulk.mesh_meta_data();
-    stk::mesh::Part* blockPart = meta.get_part("block_1");
-    stk::mesh::Part* surfPart = &meta.declare_part_with_topology("surface_1", stk::topology::QUAD_4);
-
-    auto elemDesc = sierra::nalu::ElementDescription::create(3,polyOrder);
-
-    const std::string superName = sierra::nalu::super_element_part_name("block_1");
-    stk::topology topo = stk::create_superelement_topology(static_cast<unsigned>(elemDesc->nodesPerElement));
-    meta.declare_part_with_topology(superName, topo);
-
-    stk::mesh::Part* superSuperPart =
-        &meta.declare_part(sierra::nalu::super_element_part_name("surface_1"), stk::topology::FACE_RANK);
-
-    const auto sidePartName = sierra::nalu::super_subset_part_name("surface_1");
-    auto sideTopo = stk::create_superface_topology(static_cast<unsigned>(elemDesc->nodesPerSide));
-    stk::mesh::Part* superSidePart = &meta.declare_part_with_topology(sidePartName, sideTopo);
-    meta.declare_part_subset(*superSuperPart, *superSidePart);
-
-    stk::mesh::Part* edgePart = &meta.declare_part("edge_part", stk::topology::EDGE_RANK);
-    stk::mesh::Part* facePart = &meta.declare_part("face_part", stk::topology::FACE_RANK);
-
-    io.populate_bulk_data();
-    stk::mesh::create_exposed_block_boundary_sides(bulk, *blockPart, {surfPart});
-
-    VectorFieldType* coords = meta.get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
-    stk::mesh::PartVector baseParts = {blockPart, surfPart};
-    sierra::nalu::promotion::promote_elements(bulk, *elemDesc, *coords, baseParts, edgePart, facePart);
-}
-
 void dump_mesh(stk::mesh::BulkData& bulk, std::vector<stk::mesh::FieldBase*> fields)
 {
   stk::io::StkMeshIoBroker io(bulk.parallel());
@@ -136,26 +96,6 @@ void dump_mesh(stk::mesh::BulkData& bulk, std::vector<stk::mesh::FieldBase*> fie
   }
 
   io.process_output_request(fileId, 0.0);
-}
-
-void dump_promoted_mesh_file(stk::mesh::BulkData& bulk, int polyOrder)
-{
-    const auto& meta = bulk.mesh_meta_data();
-    const stk::mesh::PartVector& outParts = meta.get_mesh_parts();
-    std::string fileName = "out.e" ;
-
-    auto desc = sierra::nalu::ElementDescription::create(meta.spatial_dimension(), polyOrder);
-    VectorFieldType* coordField = meta.get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
-
-    auto io = sierra::nalu::make_unique<sierra::nalu::PromotedElementIO>(
-      *desc,
-      meta,
-      bulk,
-      outParts,
-      fileName,
-      *coordField
-    );
-    io->write_database_data(0.0);
 }
 
 std::ostream& nalu_out()
@@ -184,8 +124,8 @@ stk::mesh::Entity create_one_element(
    // set a coordinate field
    using vector_field_type = stk::mesh::Field<double, stk::mesh::Cartesian3d>;
    auto& coordField = meta.declare_field<vector_field_type>(stk::topology::NODE_RANK, "coordinates");
-   stk::mesh::put_field(coordField, block_1);
-   stk::mesh::put_field(coordField, stk::mesh::selectUnion(allSurfaces));
+   stk::mesh::put_field_on_mesh(coordField, block_1, nullptr);
+   stk::mesh::put_field_on_mesh(coordField, stk::mesh::selectUnion(allSurfaces), nullptr);
    meta.set_coordinate_field(&coordField);
    meta.commit();
 
@@ -196,7 +136,7 @@ stk::mesh::Entity create_one_element(
    bulk.modification_begin();
 
    for (auto id : nodeIds) {
-     bulk.declare_entity(stk::topology::NODE_RANK, id, {});
+     bulk.declare_entity(stk::topology::NODE_RANK, id, stk::mesh::PartVector{});
    }
    auto elem = stk::mesh::declare_element(bulk, block_1, bulk.parallel_rank()+1, nodeIds);
    stk::mesh::create_all_sides(bulk, block_1, allSurfaces, false);

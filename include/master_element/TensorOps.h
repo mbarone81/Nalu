@@ -11,10 +11,10 @@
 #include <array>
 #include <limits>
 
-#include <stk_util/environment/ReportHandler.hpp>
-
 #include <KokkosInterface.h>
 #include <SimdInterface.h>
+
+#include <stk_util/util/ReportHandler.hpp>
 
 namespace sierra{
 namespace nalu{
@@ -64,22 +64,6 @@ namespace nalu{
     return (mat[XX] * (mat[YY] * mat[ZZ] - mat[YZ] * mat[ZY])
           - mat[XY] * (mat[YX] * mat[ZZ] - mat[YZ] * mat[ZX])
           + mat[XZ] * (mat[YX] * mat[ZY] - mat[YY] * mat[ZX]));
-  }
-
-  template <typename ScalarType>
-  KOKKOS_FORCEINLINE_FUNCTION void adjugate_matrix33(const ScalarType jact[3][3], ScalarType adjJac[3][3])
-  {
-    adjJac[0][0] = jact[1][1] * jact[2][2] - jact[2][1] * jact[1][2];
-    adjJac[0][1] = jact[1][2] * jact[2][0] - jact[2][2] * jact[1][0];
-    adjJac[0][2] = jact[1][0] * jact[2][1] - jact[2][0] * jact[1][1];
-
-    adjJac[1][0] = jact[0][2] * jact[2][1] - jact[2][2] * jact[0][1];
-    adjJac[1][1] = jact[0][0] * jact[2][2] - jact[2][0] * jact[0][2];
-    adjJac[1][2] = jact[0][1] * jact[2][0] - jact[2][1] * jact[0][0];
-
-    adjJac[2][0] = jact[0][1] * jact[1][2] - jact[1][1] * jact[0][2];
-    adjJac[2][1] = jact[0][2] * jact[1][0] - jact[1][2] * jact[0][0];
-    adjJac[2][2] = jact[0][0] * jact[1][1] - jact[1][0] * jact[0][1];
   }
 
   template <typename ScalarType>

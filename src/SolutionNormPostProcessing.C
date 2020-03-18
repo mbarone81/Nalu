@@ -6,31 +6,32 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <SolutionNormPostProcessing.h>
-#include <AuxFunctionAlgorithm.h>
-#include <FieldTypeDef.h>
-#include <NaluParsing.h>
-#include <Realm.h>
+#include "SolutionNormPostProcessing.h"
+#include "AuxFunctionAlgorithm.h"
+#include "FieldTypeDef.h"
+#include "NaluParsing.h"
+#include "Realm.h"
 
 // the factory of aux functions
-#include <user_functions/SteadyThermal3dContactAuxFunction.h>
-#include <user_functions/SteadyThermal3dContactDtDxAuxFunction.h>
-#include <user_functions/SteadyThermalContactAuxFunction.h>
-#include <user_functions/SteadyTaylorVortexVelocityAuxFunction.h>
-#include <user_functions/SteadyTaylorVortexGradPressureAuxFunction.h>
-#include <user_functions/ConvectingTaylorVortexVelocityAuxFunction.h>
-#include <user_functions/ConvectingTaylorVortexPressureAuxFunction.h>
-#include <user_functions/VariableDensityVelocityAuxFunction.h>
-#include <user_functions/VariableDensityNonIsoTemperatureAuxFunction.h>
-#include <user_functions/BoussinesqNonIsoVelocityAuxFunction.h>
-#include <user_functions/BoussinesqNonIsoTemperatureAuxFunction.h>
-#include <user_functions/VariableDensityMixFracAuxFunction.h>
-#include <user_functions/KovasznayVelocityAuxFunction.h>
-#include <user_functions/KovasznayPressureAuxFunction.h>
-#include <user_functions/WindEnergyTaylorVortexAuxFunction.h>
-#include <user_functions/WindEnergyTaylorVortexPressureAuxFunction.h>
+#include "user_functions/SteadyThermal3dContactAuxFunction.h"
+#include "user_functions/SteadyThermal3dContactDtDxAuxFunction.h"
+#include "user_functions/SteadyThermalContactAuxFunction.h"
+#include "user_functions/SteadyTaylorVortexVelocityAuxFunction.h"
+#include "user_functions/SteadyTaylorVortexGradPressureAuxFunction.h"
+#include "user_functions/ConvectingTaylorVortexVelocityAuxFunction.h"
+#include "user_functions/ConvectingTaylorVortexPressureAuxFunction.h"
+#include "user_functions/VariableDensityVelocityAuxFunction.h"
+#include "user_functions/VariableDensityNonIsoTemperatureAuxFunction.h"
+#include "user_functions/BoussinesqNonIsoVelocityAuxFunction.h"
+#include "user_functions/BoussinesqNonIsoTemperatureAuxFunction.h"
+#include "user_functions/VariableDensityMixFracAuxFunction.h"
+#include "user_functions/KovasznayVelocityAuxFunction.h"
+#include "user_functions/KovasznayPressureAuxFunction.h"
+#include "user_functions/WindEnergyTaylorVortexAuxFunction.h"
+#include "user_functions/WindEnergyTaylorVortexPressureAuxFunction.h"
 
-#include <user_functions/OneTwoTenVelocityAuxFunction.h>
+#include "user_functions/OneTwoTenVelocityAuxFunction.h"
+#include "user_functions/ConcentricAuxFunction.h"
 
 // stk_util
 #include <stk_util/parallel/ParallelReduce.hpp>
@@ -108,9 +109,26 @@ SolutionNormPostProcessing::load(
     get_if_present(y_norm, "percision", percision_, percision_);
     get_if_present(y_norm, "precision", percision_, percision_);
 
+    // target 
+    if ( y_norm["target_name"] ) {
+      
+      // extract the value(s)
+      const YAML::Node targets = y_norm["target_name"];
+      if (targets.Type() == YAML::NodeType::Scalar) {
+        targets_.resize(1);
+        targets_[0] = targets.as<std::string>() ;
+      }
+      else {
+        targets_.resize(targets.size());
+        for (size_t i=0; i < targets.size(); ++i) {
+          targets_[i] = targets[i].as<std::string>() ;
+        }
+      }
+    }
+    else {
+      throw std::runtime_error("Missing target name in solution norm");
+    }
 
-    // target matches the physics description (see Material model)
-    
     // find the pair; create some space for the names
     const YAML::Node y_dof_pair = y_norm["dof_user_function_pair"];
     std::string dofName, functionName;
@@ -148,17 +166,15 @@ SolutionNormPostProcessing::load(
 void
 SolutionNormPostProcessing::setup()
 {
-  // extract target names
-
-  const std::vector<std::string> targetNames = realm_.get_physics_target_names();
   stk::mesh::MetaData & metaData = realm_.meta_data();
-
+  
   // first, loop over all target names, extract the part and push back
-  for ( size_t itarget = 0; itarget < targetNames.size(); ++itarget ) {
-    stk::mesh::Part *targetPart = metaData.get_part(targetNames[itarget]);
+  for ( size_t itarget = 0; itarget < targets_.size(); ++itarget ) {
+    std::string physicsName = realm_.physics_part_name(targets_[itarget]);
+    stk::mesh::Part *targetPart = metaData.get_part(physicsName);
     if ( NULL == targetPart ) {
-      NaluEnv::self().naluOutputP0() << "Trouble with part " << targetNames[itarget] << std::endl;
-      throw std::runtime_error("Sorry, no part name found by the name " + targetNames[itarget]);
+      NaluEnv::self().naluOutputP0() << "Trouble with part " << physicsName << std::endl;
+      throw std::runtime_error("Sorry, no part name found by the name " + physicsName);
     }
     else {
       // push back
@@ -191,7 +207,7 @@ SolutionNormPostProcessing::setup()
     // register the field, "dofName + _exact"
     const std::string dofNameExact = dofName + "_exact";
     
-    stk::mesh::FieldBase *exactDofField
+    stk::mesh::Field<double, stk::mesh::SimpleArrayTag> *exactDofField
       = &(metaData.declare_field<stk::mesh::Field<double, stk::mesh::SimpleArrayTag> >(stk::topology::NODE_RANK, dofNameExact));
         
     // push back to vector of pairs; unique list 
@@ -203,7 +219,7 @@ SolutionNormPostProcessing::setup()
       stk::mesh::Part *targetPart = partVec_[j];
 
       // put the field on the part
-      stk::mesh::put_field(*exactDofField, *targetPart, dofSize);
+      stk::mesh::put_field_on_mesh(*exactDofField, *targetPart, dofSize, nullptr);
     
       // create the algorithm to populate the analytical field
       analytical_function_factory(functionName, exactDofField, targetPart);
@@ -275,6 +291,9 @@ SolutionNormPostProcessing::analytical_function_factory(
   }
   else if ( functionName == "wind_energy_taylor_vortex_dpdx" ) {
     theAuxFunc = new WindEnergyTaylorVortexPressureGradAuxFunction(0,realm_.meta_data().spatial_dimension(), std::vector<double>());
+  }
+  else if ( functionName == "concentric" ) {
+    theAuxFunc = new ConcentricAuxFunction();
   }
   else {
     throw std::runtime_error(

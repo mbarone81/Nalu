@@ -83,7 +83,8 @@ public:
     const std::string fieldName,
     const int fieldSize,
     stk::mesh::MetaData &metaData,
-    stk::mesh::Part *targetPart);
+    stk::mesh::Part *targetPart,
+    const bool restartField = true);
 
   void review( 
     const AveragingInfo *avInfo);
@@ -141,19 +142,39 @@ public:
 
   void compute_vorticity(
     const std::string &averageBlockName,
-	stk::mesh::Selector s_all_nodes);
+    stk::mesh::Selector s_all_nodes);
 
   void compute_q_criterion(
-	const std::string &averageBlockName,
-	stk::mesh::Selector s_all_nodes);
+    const std::string &averageBlockName,
+    stk::mesh::Selector s_all_nodes);
 
   void compute_lambda_ci(
-	const std::string &averageBlockName,
-	stk::mesh::Selector s_all_nodes);
+    const std::string &averageBlockName,
+    stk::mesh::Selector s_all_nodes);
 
   void compute_mean_resolved_ke(
-	const std::string &averageBlockName,
-	stk::mesh::Selector s_all_nodes);
+    const std::string &averageBlockName,
+    stk::mesh::Selector s_all_nodes);
+
+  void compute_mean_error_indicator(
+    stk::mesh::Selector s_all_nodes,
+    const double dt,
+    const double oldTimeFilter,
+    const double zeroCurrent);
+  
+  void compute_dissipation_rate(
+    const AveragingInfo *avInfo,
+    const double &oldTimeFilter,
+    const double &zeroCurrent,
+    const double &dt,
+    stk::mesh::Selector s_all_nodes);
+  
+  void compute_production(
+    const AveragingInfo *avInfo,
+    const double &oldTimeFilter,
+    const double &zeroCurrent,
+    const double &dt,
+    stk::mesh::Selector s_all_nodes);
 
   // hold the realm
   Realm &realm_;
@@ -163,9 +184,9 @@ public:
 
   bool forcedReset_; /* allows forhard reset */
 
-  AveragingType averagingType_{NALU_CLASSIC};
-  std::unique_ptr<MovingAveragePostProcessor> movingAvgPP_;
-
+  AveragingType averagingType_;
+  MovingAveragePostProcessor *movingAvgPP_;
+  
   // vector of averaging information
   std::vector<AveragingInfo *> averageInfoVec_;
 };

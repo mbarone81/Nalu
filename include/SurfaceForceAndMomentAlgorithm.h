@@ -28,9 +28,9 @@ public:
     Realm &realm,
     stk::mesh::PartVector &partVec,
     const std::string &outputFileName,
-    const int &frequency_,
     const std::vector<double > &parameters,
-    const bool &useShifted);
+    const bool &useShifted,
+    ScalarFieldType *assembledArea);
   ~SurfaceForceAndMomentAlgorithm();
 
   void execute();
@@ -41,11 +41,11 @@ public:
     double *force, double *cross, double *rad);
 
   const std::string &outputFileName_;
-  const int &frequency_;
   const std::vector<double > &parameters_;
   const bool useShifted_;
   const double includeDivU_;
 
+  ScalarFieldType *assembledArea_;
   VectorFieldType *coordinates_;
   ScalarFieldType *pressure_;
   VectorFieldType *pressureForce_;
@@ -55,7 +55,6 @@ public:
   ScalarFieldType *viscosity_;
   GenericFieldType *dudx_;
   GenericFieldType *exposedAreaVec_;
-  ScalarFieldType *assembledArea_;
 
   const int w_;
 

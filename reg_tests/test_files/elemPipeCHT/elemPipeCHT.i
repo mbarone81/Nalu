@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -73,6 +71,7 @@ realms:
 
     solution_options:
       name: myOptionsHC
+      use_consolidated_face_elem_bc_algorithm: yes
       options:
         - projected_nodal_gradient:
             temperature: element
@@ -166,7 +165,7 @@ realms:
       specifications:
  
         - name: density
-          type: ideal_gas_t
+          type: ideal_gas
 
         - name: viscosity
           type: polynomial

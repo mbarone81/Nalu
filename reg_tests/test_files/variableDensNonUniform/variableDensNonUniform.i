@@ -1,8 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
-    error_estimator: errest_1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -127,7 +124,6 @@ realms:
       name: myOptions
       turbulence_model: laminar
       divU_stress_scaling: 1.0
-      interp_rhou_together_for_mdot: yes
 
       options:
 

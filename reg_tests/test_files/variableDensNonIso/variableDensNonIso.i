@@ -1,8 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
-    error_estimator: errest_1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -69,6 +66,7 @@ realms:
       constant_specification:
        universal_gas_constant: 10.0
        reference_pressure: 100.00
+       reference_temperature: 300.0 # for h = \bar{Cp}*(T-Tref)
 
       reference_quantities:
         - species_name: N2

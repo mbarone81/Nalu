@@ -88,11 +88,9 @@ public:
 
   virtual void load(const YAML::Node & node) final;
   bool getSummarizeMueluTimer() { return summarizeMueluTimer_; }
-  std::string & muelu_xml_file() {return muelu_xml_file_;}
   bool use_MueLu() const {return useMueLu_;}
 
 private:
-  std::string muelu_xml_file_;
   bool summarizeMueluTimer_{false};
   bool useMueLu_{false};
 };
@@ -116,7 +114,7 @@ protected:
   std::vector<Teuchos::RCP<Ifpack2::FunctionParameter>> funcParams_;
 
   //! Convergence tolerance for the linear system solver
-  double tolerance_{1.0e-4};
+  double absTol_{0.0};
 
   //! Maximum iterations to attempt if convergence is not met
   int maxIterations_{50};
@@ -141,7 +139,8 @@ protected:
   std::string bamgEuclidFile_{""};
 
   bool isHypreSolver_{true};
-
+  bool hasAbsTol_{false};
+ 
 private:
   void boomerAMG_solver_config(const YAML::Node&);
   void boomerAMG_precond_config(const YAML::Node&);
@@ -149,6 +148,7 @@ private:
   void euclid_precond_config(const YAML::Node&);
 
   void hypre_gmres_solver_config(const YAML::Node&);
+  void hypre_cogmres_solver_config(const YAML::Node&);
   void hypre_lgmres_solver_config(const YAML::Node&);
   void hypre_flexgmres_solver_config(const YAML::Node&);
   void hypre_pcg_solver_config(const YAML::Node&);

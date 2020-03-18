@@ -186,7 +186,7 @@ void HexSCV::grad_op(
   SharedMemView<DoubleType***>&deriv)
 {
   hex8_derivative(numIntPoints_, &intgLoc_[0], deriv);
-  generic_grad_op_3d<AlgTraitsHex8>(deriv, coords, gradop);
+  generic_grad_op<AlgTraitsHex8>(deriv, coords, gradop);
 }
 
 //--------------------------------------------------------------------------
@@ -215,6 +215,18 @@ void HexSCV::grad_op(
 
   if ( lerr )
     NaluEnv::self().naluOutput() << "sorry, negative HexSCV volume.." << std::endl;
+}
+
+//--------------------------------------------------------------------------
+//-------- shifted_grad_op -------------------------------------------------
+//--------------------------------------------------------------------------
+void HexSCV::shifted_grad_op(
+  SharedMemView<DoubleType**>&coords,
+  SharedMemView<DoubleType***>&gradop,
+  SharedMemView<DoubleType***>&deriv)
+{
+  hex8_derivative(numIntPoints_, &intgLocShift_[0], deriv);
+  generic_grad_op<AlgTraitsHex8>(deriv, coords, gradop);
 }
 
 //--------------------------------------------------------------------------
@@ -262,6 +274,15 @@ HexSCS::HexSCS()
   lrscv_[18] = 1; lrscv_[19] = 5;
   lrscv_[20] = 2; lrscv_[21] = 6;
   lrscv_[22] = 3; lrscv_[23] = 7;
+
+  // elem-edge mapping from ip
+  scsIpEdgeOrd_.resize(numIntPoints_);
+  scsIpEdgeOrd_[0]  = 0;  scsIpEdgeOrd_[1]  = 1; 
+  scsIpEdgeOrd_[2]  = 2;  scsIpEdgeOrd_[3]  = 3; 
+  scsIpEdgeOrd_[4]  = 4;  scsIpEdgeOrd_[5]  = 5; 
+  scsIpEdgeOrd_[6]  = 6;  scsIpEdgeOrd_[7]  = 7;
+  scsIpEdgeOrd_[8]  = 8;  scsIpEdgeOrd_[9]  = 9;
+  scsIpEdgeOrd_[10] = 10; scsIpEdgeOrd_[11] = 11;
 
   // define opposing node
   oppNode_.resize(24);
@@ -505,19 +526,19 @@ void HexSCS::grad_op(
   SharedMemView<DoubleType***>&deriv)
 {
   hex8_derivative(numIntPoints_, &intgLoc_[0], deriv);
-  generic_grad_op_3d<AlgTraitsHex8>(deriv, coords, gradop);
+  generic_grad_op<AlgTraitsHex8>(deriv, coords, gradop);
  }
 
 //--------------------------------------------------------------------------
 //-------- shifted_grad_op -------------------------------------------------
-//--------------------------------------c------------------------------------
+//---------------------------------------------------------------------------
 void HexSCS::shifted_grad_op(
   SharedMemView<DoubleType**>&coords,
   SharedMemView<DoubleType***>&gradop,
   SharedMemView<DoubleType***>&deriv)
 {
   hex8_derivative(numIntPoints_, &intgLocShift_[0], deriv);
-  generic_grad_op_3d<AlgTraitsHex8>(deriv, coords, gradop);
+  generic_grad_op<AlgTraitsHex8>(deriv, coords, gradop);
 }
 
 //--------------------------------------------------------------------------
@@ -645,6 +666,33 @@ void HexSCS::shifted_grad_op(
 //-------- face_grad_op ----------------------------------------------------
 //--------------------------------------------------------------------------
 void HexSCS::face_grad_op(
+  const int face_ordinal,
+  const bool shifted,
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop)
+{
+  using traits = AlgTraitsQuad4Hex8;
+  const std::vector<double> &exp_face = shifted ? intgExpFaceShift_ : intgExpFace_;
+
+  constexpr int derivSize = traits::numFaceIp_ * traits::nodesPerElement_ * traits::nDim_;
+  DoubleType psi[derivSize];
+  SharedMemView<DoubleType***> deriv(psi, traits::numFaceIp_, traits::nodesPerElement_, traits::nDim_);
+
+  const int offset = traits::numFaceIp_ * traits::nDim_ * face_ordinal;
+  hex8_derivative(traits::numFaceIp_, &exp_face[offset], deriv);
+  generic_grad_op<AlgTraitsHex8>(deriv, coords, gradop);
+}
+
+void HexSCS::face_grad_op(
+  int face_ordinal,
+  SharedMemView<DoubleType**>& coords,
+  SharedMemView<DoubleType***>& gradop)
+{
+  constexpr bool shifted = false;
+  face_grad_op(face_ordinal, shifted, coords, gradop);
+}
+
+void HexSCS::face_grad_op(
   const int nelem,
   const int face_ordinal,
   const double *coords,
@@ -681,25 +729,18 @@ void HexSCS::face_grad_op(
   }
 }
 
-void HexSCS::face_grad_op(
+//--------------------------------------------------------------------------
+//-------- shifted_face_grad_op --------------------------------------------
+//--------------------------------------------------------------------------
+void HexSCS::shifted_face_grad_op(
   int face_ordinal,
   SharedMemView<DoubleType**>& coords,
   SharedMemView<DoubleType***>& gradop)
 {
-  using traits = AlgTraitsQuad4Hex8;
-
-  constexpr int derivSize = traits::numFaceIp_ * traits::nodesPerElement_ * traits::nDim_;
-  DoubleType psi[derivSize];
-  SharedMemView<DoubleType***> deriv(psi, traits::numFaceIp_, traits::nodesPerElement_, traits::nDim_);
-
-  const int offset = traits::numFaceIp_ * traits::nDim_ * face_ordinal;
-  hex8_derivative(traits::numFaceIp_, &intgExpFace_[offset], deriv);
-  generic_grad_op_3d<AlgTraitsHex8>(deriv, coords, gradop);
+  constexpr bool shifted = true;
+  face_grad_op(face_ordinal, shifted, coords, gradop);
 }
 
-//--------------------------------------------------------------------------
-//-------- shifted_face_grad_op --------------------------------------------
-//--------------------------------------------------------------------------
 void HexSCS::shifted_face_grad_op(
   const int nelem,
   const int face_ordinal,
@@ -774,6 +815,15 @@ HexSCS::adjacentNodes()
 {
   // define L/R mappings
   return &lrscv_[0];
+}
+
+//--------------------------------------------------------------------------
+//-------- scsIpEdgeOrd ----------------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+HexSCS::scsIpEdgeOrd()
+{
+  return &scsIpEdgeOrd_[0];
 }
 
 //--------------------------------------------------------------------------

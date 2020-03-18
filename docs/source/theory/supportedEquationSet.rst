@@ -303,7 +303,13 @@ energy equation, subtracting the mechanical energy equation and
 enforcing the variable density continuity equation. Note that the above
 equation includes possible source terms due to thermal radiatitive
 transport, viscous dissipation, pressure work,
-and external driving sources (:math:`S_\theta`).
+and external driving sources (:math:`S_\theta`). 
+
+Above, :math:`\frac{\partial \bar{q}_i^r}{\partial x_i}` represents the divergence
+of the radiative flux and is active when participating media radiation (PMR) coupling 
+is active. At present, there is no sophisticated absorption coefficient model supported in
+the gas phase. Therefore, this source term is fully applied to the enthalpy along with 
+any possible linearizations that solely originate from the PMR realm solve and transfer.
 
 The simple Fickian diffusion velocity approximation,
 Equation :eq:`diffvel1`, is assumed, so that the mean diffusive heat flux
@@ -796,6 +802,11 @@ and :math:`c_{DES}` represents a blended set of DES constants:
 scale, :math:`l_{DES}` is the maximum edge length scale touching a given
 node.
 
+Note that the production term appearing in both the turbulent kinetic
+energy and specific dissipation rate equation is limited to a 
+user-supplied scaling of the above dissipation term. Currently, all
+SST variants use a production to dissipation ratio limiting of ten.
+
 Solid Stress
 ++++++++++++
 
@@ -1027,7 +1038,7 @@ intensity leaving a diffuse surface in all directions is given by
 
    I\left(s\right) = \frac{1}{\pi} \left[ \tau \sigma T_\infty^4
                    + \epsilon \sigma T_w^4
-                   + \left(1 - \epsilon - \tau \right) K \right] ,
+                   + \left(1 - \epsilon - \tau \right) H \right] ,
 
 where :math:`\epsilon` is the total normal emissivity of the surface,
 :math:`\tau` is the transmissivity of the surface, :math:`T_w` is the

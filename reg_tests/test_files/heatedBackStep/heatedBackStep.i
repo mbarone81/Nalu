@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -76,7 +74,7 @@ realms:
       specifications:
  
         - name: density
-          type: ideal_gas_t
+          type: ideal_gas
 
         - name: viscosity
           type: polynomial
@@ -155,7 +153,6 @@ realms:
       target_name: [surface_6, surface_7]
       periodic_user_data:
         search_tolerance: 1.e-5
-        search_method: boost_rtree
 
     - wall_boundary_condition: bc_top
       target_name: surface_8

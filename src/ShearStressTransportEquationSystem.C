@@ -6,16 +6,16 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <ShearStressTransportEquationSystem.h>
-#include <AlgorithmDriver.h>
-#include <ComputeSSTMaxLengthScaleElemAlgorithm.h>
-#include <FieldFunctions.h>
-#include <master_element/MasterElement.h>
-#include <NaluEnv.h>
-#include <SpecificDissipationRateEquationSystem.h>
-#include <SolutionOptions.h>
-#include <TurbKineticEnergyEquationSystem.h>
-#include <Realm.h>
+#include "ShearStressTransportEquationSystem.h"
+#include "AlgorithmDriver.h"
+#include "ComputeSSTMaxLengthScaleElemAlgorithm.h"
+#include "FieldFunctions.h"
+#include "master_element/MasterElement.h"
+#include "NaluEnv.h"
+#include "SpecificDissipationRateEquationSystem.h"
+#include "SolutionOptions.h"
+#include "TurbKineticEnergyEquationSystem.h"
+#include "Realm.h"
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -23,6 +23,7 @@
 // stk_mesh/base/fem
 #include <stk_mesh/base/BulkData.hpp>
 #include <stk_mesh/base/Field.hpp>
+#include <stk_mesh/base/FieldParallel.hpp>
 #include <stk_mesh/base/MetaData.hpp>
 
 // stk_io
@@ -97,20 +98,20 @@ ShearStressTransportEquationSystem::register_nodal_fields(
 
   // re-register tke and sdr for convenience
   tke_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_ke", numStates));
-  stk::mesh::put_field(*tke_, *part);
+  stk::mesh::put_field_on_mesh(*tke_, *part, nullptr);
   sdr_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "specific_dissipation_rate", numStates));
-  stk::mesh::put_field(*sdr_, *part);
+  stk::mesh::put_field_on_mesh(*sdr_, *part, nullptr);
 
   // SST parameters that everyone needs
   minDistanceToWall_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "minimum_distance_to_wall"));
-  stk::mesh::put_field(*minDistanceToWall_, *part);
+  stk::mesh::put_field_on_mesh(*minDistanceToWall_, *part, nullptr);
   fOneBlending_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "sst_f_one_blending"));
-  stk::mesh::put_field(*fOneBlending_, *part);
+  stk::mesh::put_field_on_mesh(*fOneBlending_, *part, nullptr);
   
   // DES model
   if ( SST_DES == realm_.solutionOptions_->turbulenceModel_ ) {
     maxLengthScale_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "sst_max_length_scale"));
-    stk::mesh::put_field(*maxLengthScale_, *part);
+    stk::mesh::put_field_on_mesh(*maxLengthScale_, *part, nullptr);
   }
 
   // add to restart field
@@ -278,25 +279,6 @@ ShearStressTransportEquationSystem::initial_work()
       }
     }
   }
-}
-
-//--------------------------------------------------------------------------
-//-------- post_adapt_work -------------------------------------------------
-//--------------------------------------------------------------------------
-void
-ShearStressTransportEquationSystem::post_adapt_work()
-{
-  if ( realm_.process_adaptivity() ) {
-    NaluEnv::self().naluOutputP0() << "--ShearStressTransportEquationSystem::post_adapt_work()" << std::endl;
-
-    if ( SST_DES == realm_.solutionOptions_->turbulenceModel_ )
-      sstMaxLengthScaleAlgDriver_->execute();
-
-    // wall values
-    tkeEqSys_->compute_wall_model_parameters();
-    sdrEqSys_->compute_wall_model_parameters();
-  }
-
 }
 
 //--------------------------------------------------------------------------
@@ -477,6 +459,16 @@ ShearStressTransportEquationSystem::clip_min_distance_to_wall()
          *minD = std::max(*minD, ypbip);
        }
      }
+   }
+  
+   // parallel reduce
+   std::vector<const stk::mesh::FieldBase *> fieldVec;
+   fieldVec.push_back(minDistanceToWall_);
+   stk::mesh::parallel_max(bulk_data, fieldVec);
+   
+   // deal with periodicity
+   if ( realm_.hasPeriodic_) {
+     realm_.periodic_field_update(minDistanceToWall_, 1);
    }
 }
 

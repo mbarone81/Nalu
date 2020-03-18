@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -20,6 +18,7 @@ realms:
     mesh: ../../mesh/periodic3d.g
     use_edges: no 
     automatic_decomposition_type: rcb
+    activate_fem: yes
 
     equation_systems:
       name: theEqSys
@@ -75,7 +74,7 @@ realms:
       options:
  
       - element_source_terms:
-          temperature: FEM_DIFF
+          temperature: [FEM_MASS, FEM_DIFF]
 
       - shifted_gradient_operator:
           temperature: yes 

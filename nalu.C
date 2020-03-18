@@ -19,8 +19,9 @@
 #include <stk_util/environment/perf_util.hpp>
 #include <stk_util/parallel/ParallelReduce.hpp>
 
-// boost for input params
-#include <boost/program_options.hpp>
+// input params
+#include <stk_util/environment/OptionsSpecification.hpp>
+#include <stk_util/environment/ParseCommandLineArgs.hpp>
 
 // yaml for parsing..
 #include <yaml-cpp/yaml.h>
@@ -78,46 +79,42 @@ int main( int argc, char ** argv )
   double start_time = naluEnv.nalu_time();
 
   // command line options.
-  std::string inputFileName, logFileName;
+  std::string inputFileName, logFileName, baseName;
   bool debug = false;
   int serializedIOGroupSize = 0;
   const std::string naluVersion = (version::RepoIsDirty == "DIRTY")
     ? (version::NaluVersionTag + "-dirty")
     : version::NaluVersionTag;
 
-  boost::program_options::options_description desc("Nalu Supported Options");
+  stk::OptionsSpecification desc("Nalu Supported Options:");
+  std::string naluVout = naluVersion.c_str();
   desc.add_options()
     ("help,h","Help message")
     ("version,v", naluVersion.c_str())
-    ("input-deck,i", boost::program_options::value<std::string>(&inputFileName)->default_value("nalu.i"),
-        "Analysis input file")
-    ("log-file,o", boost::program_options::value<std::string>(&logFileName),
-        "Analysis log file")
-    ("serialized-io-group-size,s",
-     boost::program_options::value<int>(&serializedIOGroupSize)->default_value(0),
-        "Specifies the number of processors which can concurrently perform I/O. Specifying zero disables serialization.")
-    ("debug,D", "debug print on")
-    ("pprint,p", "parallel print on");
+    ("input-file,i", "Analysis input file", stk::DefaultValue<std::string>("nalu.i"), stk::TargetPointer<std::string>(&inputFileName))
+    /*("log-file,o", "Analysis log file", stk::DefaultValue<std::string>("nalu.log"), stk::TargetPointer<std::string>(&logFileName))*/
+    ("log-file,o", "Analysis log file", stk::TargetPointer<std::string>(&logFileName))
+    ("serialized-io-group-size,s", "Specifies the number of processors that can concurrently perform I/O. Specifying zero disables serialization.", stk::DefaultValue<int>(0), stk::TargetPointer<int>(&serializedIOGroupSize))
+    ("debug,D","Debug output to the log file")
+    ("pprint,p","Parallel output to the number of mpi rank log files ");
 
-  boost::program_options::variables_map vm;
-  boost::program_options::store(boost::program_options::parse_command_line(argc, argv, desc), vm);
-
-  boost::program_options::notify(vm);
+  stk::ParsedOptions parsedOptions;
+  stk::parse_command_line_args(argc, const_cast<const char**>(argv), desc, parsedOptions);
 
   // deal with some default parameters
-  if ( vm.count("help") ) {
+  if ( parsedOptions.count("help") ) {
     if (!naluEnv.parallel_rank())
       std::cerr << desc << std::endl;
     return 0;
   }
 
-  if (vm.count("version")) {
+  if (parsedOptions.count("version")) {
     if (!naluEnv.parallel_rank())
       std::cerr << "Version: " << naluVersion << std::endl;
     return 0;
   }
 
-  if (vm.count("debug")) {
+  if (parsedOptions.count("debug")) {
     debug = true;
   }
 
@@ -128,21 +125,26 @@ int main( int argc, char ** argv )
     return 0;
   }
 
-  // deal with logfile name; if none supplied, go with inputFileName.log
-  if (!vm.count("log-file")) {
+  // deal with logfile name; if none supplied, go with inputFileName.log  
+  if (!parsedOptions.count("log-file")) {
     int dotPos = inputFileName.rfind(".");
     if ( -1 == dotPos ) {  
       // lacking extension
       logFileName = inputFileName + ".log";
+      baseName = inputFileName;
     } 
     else {  
       // with extension; swap with .log
-      logFileName = inputFileName.substr(0, dotPos) + ".log";
+      baseName = inputFileName.substr(0, dotPos);
+      logFileName =  baseName + ".log";
     }
   }
+  
+  // set the baseName
+  naluEnv.set_base_name(baseName);
 
   bool pprint = false;
-  if (vm.count("pprint")) {
+  if (parsedOptions.count("pprint")) {
     pprint = true;
   }
   // deal with log file stream
@@ -155,14 +157,13 @@ int main( int argc, char ** argv )
       sierra::nalu::NaluParsingHelper::emit(std::cout, doc);
   }
 
-  sierra::nalu::Simulation sim(doc);
+  sierra::nalu::Simulation sim(doc, debug);
   if (serializedIOGroupSize) {
     naluEnv.naluOutputP0() << "Info: found non-zero serialized_io_group_size on command-line= "
         << serializedIOGroupSize << " (takes precedence over input file value)."
         << std::endl;
     sim.setSerializedIOGroupSize(serializedIOGroupSize);
   }
-  sim.debug_ = debug;
   sim.load(doc);
   sim.breadboard();
   sim.initialize();
@@ -171,8 +172,7 @@ int main( int argc, char ** argv )
   // stop timer
   const double stop_time = naluEnv.nalu_time();
   const double total_time = stop_time - start_time;
-  const char* timer_name = "Total Time";
-
+  
   // parallel reduce overall times
   double g_sum, g_min, g_max;
   stk::all_reduce_min(naluEnv.parallel_comm(), &total_time, &g_min, 1);
@@ -223,15 +223,12 @@ int main( int argc, char ** argv )
 
   //output timings consistent w/ rest of Sierra
   stk::diag::Timer & sierra_timer = sierra::nalu::Simulation::rootTimer();
-  const double elapsed_time = sierra_timer.getMetric<stk::diag::CPUTime>().getAccumulatedLap(false);
+  const double elapsed_time = sierra_timer.getMetric<stk::diag::WallTime>().getAccumulatedLap(false);
   stk::diag::Timer & mesh_output_timer = sierra::nalu::Simulation::outputTimer();
-  double mesh_output_time = mesh_output_timer.getMetric<stk::diag::CPUTime>().getAccumulatedLap(false);
+  double mesh_output_time = mesh_output_timer.getMetric<stk::diag::WallTime>().getAccumulatedLap(false);
   double time_without_output = elapsed_time-mesh_output_time;
 
   stk::parallel_print_time_without_output_and_hwm(naluEnv.parallel_comm(), time_without_output, naluEnv.naluOutputP0());
-
-  if (!naluEnv.parallel_rank())
-    stk::print_timers_and_memory(&timer_name, &total_time, 1 /*num timers*/);
 
   stk::diag::printTimersTable(naluEnv.naluOutputP0(), sierra::nalu::Simulation::rootTimer(),
                               stk::diag::METRICS_CPU_TIME | stk::diag::METRICS_WALL_TIME,

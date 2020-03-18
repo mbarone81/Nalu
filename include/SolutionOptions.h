@@ -59,12 +59,10 @@ public:
 
   inline std::string get_coordinates_name() const
   {
-    return does_mesh_move() ? "current_coordinates" : "coordinates";
+    return ( (meshMotion_ | meshDeformation_ | externalMeshDeformation_ | initialMeshDisplacement_) 
+	     ? "current_coordinates" : "coordinates");    
   }
-
-  inline double get_mdot_interp() const
-  { return mdotInterpRhoUTogether_ ? 1.0 : 0.0; }
-
+  
   double get_alpha_factor(const std::string&) const;
 
   double get_alpha_upw_factor(const std::string&) const;
@@ -81,8 +79,12 @@ public:
  
   double get_turb_model_constant(
     TurbulenceModelConstant turbModelEnum) const;
+  
+  double get_turb_prandtl(const std::string &dofName) const;
 
-  bool has_set_boussinesq_time_scale();
+  bool get_noc_usage(const std::string &dofName) const;
+
+  void set_consolidated_bc_solver_alg();
 
   double hybridDefault_;
   double alphaDefault_;
@@ -101,29 +103,16 @@ public:
   double referenceTemperature_;
   double thermalExpansionCoeff_;
   double stefanBoltzmann_;
-  double nearestFaceEntrain_;
   double includeDivU_;
-  bool mdotInterpRhoUTogether_;
   bool isTurbulent_;
   TurbulenceModel turbulenceModel_;
   bool meshMotion_;
   bool meshDeformation_;
   bool externalMeshDeformation_;
-  bool activateUniformRefinement_;
-  bool uniformRefineSaveAfter_;
-  std::vector<int> refineAt_;
-  bool activateAdaptivity_;
+  bool initialMeshDisplacement_;
+  bool errorIndicatorActive_;
   ErrorIndicatorType errorIndicatorType_;
-  int adaptivityFrequency_;
-  bool useMarker_;
-  double refineFraction_;
-  double unrefineFraction_;
-  double physicalErrIndCriterion_;
-  double physicalErrIndUnrefCriterionMultipler_;
-  double maxRefinementNumberOfElementsFraction_;
-  bool adapterExtraOutput_;
-  bool useAdapter_;
-  int maxRefinementLevel_;
+  int errorIndicatorFrequency_;
   bool ncAlgGaussLabatto_;
   bool ncAlgUpwindAdvection_;
   bool ncAlgIncludePstab_;
@@ -143,21 +132,12 @@ public:
   double eigenvaluePerturbDelta_;
   int eigenvaluePerturbBiasTowards_;
   double eigenvaluePerturbTurbKe_;
-  double earthAngularVelocity_;
-  double latitude_;
-  double raBoussinesqTimeScale_;
-
+ 
   // mdot post processing
   double mdotAlgAccumulation_;
   double mdotAlgInflow_;
   double mdotAlgOpen_;
  
-  // global mdot correction alg
-  bool activateOpenMdotCorrection_;
-  double mdotAlgOpenCorrection_;
-  size_t mdotAlgOpenIpCount_;
-  double mdotAlgOpenPost_;
-
   // turbulence model coeffs
   std::map<TurbulenceModelConstant, double> turbModelConstantMap_;
   
@@ -200,6 +180,9 @@ public:
   // mesh motion
   std::map<std::string, MeshMotionInfo *> meshMotionInfoMap_;
 
+  // initial displacement
+  std::map<std::string, MeshMotionInfo *> initialMeshDisplacementInfoMap_;
+
   std::vector<double> gravity_;
 
   // Coriolis source term
@@ -214,7 +197,9 @@ public:
   std::string name_;
 
   std::string quadType_;
-
+  
+  // allow for rho = f(P)
+  bool accousticallyCompressible_;
 };
 
 } // namespace nalu

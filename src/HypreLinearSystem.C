@@ -255,6 +255,22 @@ HypreLinearSystem::finalizeLinearSystem()
   for (HypreIntType i=0; i < numRows_; i++)
     rowFilled_[i] = RS_UNFILLED;
 
+  finalizeSolver();
+
+  // Set flag to indicate whether rows must be skipped during normal sumInto
+  // process. For this to be activated, the linear system must have Dirichlet or
+  // overset rows and they must be present on this processor
+  if (hasSkippedRows_ && !skippedRows_.empty())
+    checkSkippedRows_ = true;
+
+  // At this stage the LHS and RHS data structures are ready for
+  // sumInto/assembly.
+  systemInitialized_ = true;
+}
+
+void
+HypreLinearSystem::finalizeSolver()
+{
   MPI_Comm comm = realm_.bulk_data().parallel();
   // Now perform HYPRE assembly so that the data structures are ready to be used
   // by the solvers/preconditioners.
@@ -274,16 +290,6 @@ HypreLinearSystem::finalizeLinearSystem()
   HYPRE_IJVectorSetObjectType(sln_, HYPRE_PARCSR);
   HYPRE_IJVectorInitialize(sln_);
   HYPRE_IJVectorGetObject(sln_, (void**)&(solver->parSln_));
-
-  // Set flag to indicate whether rows must be skipped during normal sumInto
-  // process. For this to be activated, the linear system must have Dirichlet or
-  // overset rows and they must be present on this processor
-  if (hasSkippedRows_ && !skippedRows_.empty())
-    checkSkippedRows_ = true;
-
-  // At this stage the LHS and RHS data structures are ready for
-  // sumInto/assembly.
-  systemInitialized_ = true;
 }
 
 void
@@ -311,6 +317,12 @@ HypreLinearSystem::loadComplete()
       HYPRE_IJMatrixSetValues(mat_, hnrows, &hncols, &lid, &lid, &setval);
   }
 
+  loadCompleteSolver();
+}
+
+void
+HypreLinearSystem::loadCompleteSolver()
+{
   // Now perform HYPRE assembly so that the data structures are ready to be used
   // by the solvers/preconditioners.
   HypreDirectSolver* solver = reinterpret_cast<HypreDirectSolver*>(linearSolver_);
@@ -325,24 +337,33 @@ HypreLinearSystem::loadComplete()
   HYPRE_IJVectorGetObject(sln_, (void**)&(solver->parSln_));
 
   solver->comm_ = realm_.bulk_data().parallel();
+
+  // Set flag to indicate zeroSystem that the matrix must be reinitialized
+  // during the next invocation.
+  matrixAssembled_ = true;
 }
 
 void
 HypreLinearSystem::zeroSystem()
 {
-  MPI_Comm comm = realm_.bulk_data().parallel();
   HypreDirectSolver* solver = reinterpret_cast<HypreDirectSolver*>(linearSolver_);
 
-  if (systemInitialized_)
-    HYPRE_IJMatrixDestroy(mat_);
-  HYPRE_IJMatrixCreate(comm, iLower_, iUpper_, jLower_, jUpper_, &mat_);
-  HYPRE_IJMatrixSetObjectType(mat_, HYPRE_PARCSR);
-  HYPRE_IJMatrixInitialize(mat_);
-  HYPRE_IJMatrixGetObject(mat_, (void**)&(solver->parMat_));
+  // It is unsafe to call IJMatrixInitialize multiple times without intervening
+  // call to IJMatrixAssemble. This occurs during the first outer iteration (of
+  // first timestep in static application and every timestep in moving mesh
+  // applications) when the data structures have been created but never used and
+  // zeroSystem is called for a reset. Include a check to ensure we only
+  // initialize if it was previously assembled.
+  if (matrixAssembled_) {
+    HYPRE_IJMatrixInitialize(mat_);
+    HYPRE_IJVectorInitialize(rhs_);
+    HYPRE_IJVectorInitialize(sln_);
 
-  HYPRE_IJVectorInitialize(rhs_);
-  HYPRE_IJVectorInitialize(sln_);
+    // Set flag to false until next invocation of IJMatrixAssemble in loadComplete
+    matrixAssembled_ = false;
+  }
 
+  HYPRE_IJMatrixSetConstantValues(mat_, 0.0);
   HYPRE_ParVectorSetConstantValues(solver->parRhs_, 0.0);
   HYPRE_ParVectorSetConstantValues(solver->parSln_, 0.0);
 
@@ -365,7 +386,7 @@ HypreLinearSystem::sumInto(
   const SharedMemView<const double**>& lhs,
   const SharedMemView<int*>&,
   const SharedMemView<int*>&,
-  const char* trace_tag)
+  const char*  /* trace_tag */)
 {
   const size_t n_obj = numEntities;
   HypreIntType numRows = n_obj * numDof_;
@@ -411,11 +432,11 @@ HypreLinearSystem::sumInto(
 void
 HypreLinearSystem::sumInto(
   const std::vector<stk::mesh::Entity>& entities,
-  std::vector<int>& scratchIds,
+  std::vector<int>&  /* scratchIds */,
   std::vector<double>& scratchVals,
   const std::vector<double>& rhs,
   const std::vector<double>& lhs,
-  const char* trace_tag)
+  const char*  /* trace_tag */)
 {
   const size_t n_obj = entities.size();
   HypreIntType numRows = n_obj * numDof_;
@@ -516,7 +537,8 @@ HypreLinearSystem::get_entity_hypre_id(const stk::mesh::Entity& node)
   HypreIntType hid = *stk::mesh::field_data(*realm_.hypreGlobalId_, mnode);
 
 #ifndef NDEBUG
-  if ((hid < 0) || (((hid+1) * numDof_i - 1) > maxRowID_)) {
+  HypreIntType chk = ((hid+1) * numDof_ - 1);
+  if ((hid < 0) || (chk > maxRowID_)) {
     std::cerr << bulk.parallel_rank() << "\t"
               << hid << "\t" << iLower_ << "\t" << iUpper_ << std::endl;
     throw std::runtime_error("BAD STK to hypre conversion");
@@ -545,7 +567,7 @@ HypreLinearSystem::solve(stk::mesh::FieldBase* linearSolutionField)
   // Call solve
   int status = 0;
 
-  status = solver->solve(iters, finalResidNorm);
+  status = solver->solve(iters, finalResidNorm, realm_.isFinalOuterIter_);
 
   if (solver->getConfig()->getWriteMatrixFiles()) {
     const std::string slnFile = eqSysName_ + ".IJV.sln";

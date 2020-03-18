@@ -47,30 +47,29 @@ SurfaceForceAndMomentWallFunctionAlgorithm::SurfaceForceAndMomentWallFunctionAlg
   Realm &realm,
   stk::mesh::PartVector &partVec,
   const std::string &outputFileName,
-  const int &frequency,
   const std::vector<double > &parameters,
-  const bool &useShifted)
+  const bool &useShifted,
+  ScalarFieldType *assembledArea)
   : Algorithm(realm, partVec),
     outputFileName_(outputFileName),
-    frequency_(frequency),
     parameters_(parameters),
     useShifted_(useShifted),
     yplusCrit_(11.63),
     elog_(9.8),
     kappa_(realm.get_turb_model_constant(TM_kappa)),
-    coordinates_(NULL),
-    velocity_(NULL),
-    pressure_(NULL),
-    pressureForce_(NULL),
-    tauWall_(NULL),
-    yplus_(NULL),
-    bcVelocity_(NULL),
-    density_(NULL),
-    viscosity_(NULL),
-    wallFrictionVelocityBip_(NULL),
-    wallNormalDistanceBip_(NULL),
-    exposedAreaVec_(NULL),
-    assembledArea_(NULL),
+    assembledArea_(assembledArea),
+    coordinates_(nullptr),
+    velocity_(nullptr),
+    pressure_(nullptr),
+    pressureForce_(nullptr),
+    tauWall_(nullptr),
+    yplus_(nullptr),
+    bcVelocity_(nullptr),
+    density_(nullptr),
+    viscosity_(nullptr),
+    wallFrictionVelocityBip_(nullptr),
+    wallNormalDistanceBip_(nullptr),
+    exposedAreaVec_(nullptr),
     w_(16)
 {
   // save off fields
@@ -87,7 +86,6 @@ SurfaceForceAndMomentWallFunctionAlgorithm::SurfaceForceAndMomentWallFunctionAlg
   wallFrictionVelocityBip_ = meta_data.get_field<GenericFieldType>(meta_data.side_rank(), "wall_friction_velocity_bip");
   wallNormalDistanceBip_ = meta_data.get_field<GenericFieldType>(meta_data.side_rank(), "wall_normal_distance_bip");
   exposedAreaVec_ = meta_data.get_field<GenericFieldType>(meta_data.side_rank(), "exposed_area_vector");
-  assembledArea_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_area_force_moment_wf");
 
   // error check on params
   const size_t nDim = meta_data.spatial_dimension();
@@ -95,7 +93,7 @@ SurfaceForceAndMomentWallFunctionAlgorithm::SurfaceForceAndMomentWallFunctionAlg
     throw std::runtime_error("SurfaceForce: parameter length wrong; expect nDim");
 
   // make sure that the wall function params are registered
-  if ( NULL == wallFrictionVelocityBip_ )
+  if ( nullptr == wallFrictionVelocityBip_ )
     throw std::runtime_error("SurfaceForce: wall friction velocity is not registered; wall bcs and post processing must be consistent");
 
   // deal with file name and banner
@@ -110,7 +108,7 @@ SurfaceForceAndMomentWallFunctionAlgorithm::SurfaceForceAndMomentWallFunctionAlg
            << "Y+min" << std::setw(w_) << "Y+max"<< std::endl;
     myfile.close();
   }
- }
+}
 
 //--------------------------------------------------------------------------
 //-------- destructor ------------------------------------------------------
@@ -126,15 +124,6 @@ SurfaceForceAndMomentWallFunctionAlgorithm::~SurfaceForceAndMomentWallFunctionAl
 void
 SurfaceForceAndMomentWallFunctionAlgorithm::execute()
 {
-
-  // check to see if this is a valid step to process output file
-  const int timeStepCount = realm_.get_time_step_count();
-  const bool processMe = (timeStepCount % frequency_) == 0 ? true : false;
-
-  // do not waste time here
-  if ( !processMe )
-    return;
-
   stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
@@ -383,34 +372,32 @@ SurfaceForceAndMomentWallFunctionAlgorithm::execute()
     }
   }
 
-  if ( processMe ) {
-    // parallel assemble and output
-    double g_force_moment[9] = {};
-    stk::ParallelMachine comm = NaluEnv::self().parallel_comm();
-
-    // Parallel assembly of L2
-    stk::all_reduce_sum(comm, &l_force_moment[0], &g_force_moment[0], 9);
-
-    // min/max
-    double g_yplusMin = 0.0, g_yplusMax = 0.0;
-    stk::all_reduce_min(comm, &yplusMin, &g_yplusMin, 1);
-    stk::all_reduce_max(comm, &yplusMax, &g_yplusMax, 1);
-
-    // deal with file name and banner
-    if ( NaluEnv::self().parallel_rank() == 0 ) {
-      std::ofstream myfile;
-      myfile.open(outputFileName_.c_str(), std::ios_base::app);
-      myfile << std::setprecision(6) 
-             << std::setw(w_) 
-             << currentTime << std::setw(w_) 
-             << g_force_moment[0] << std::setw(w_) << g_force_moment[1] << std::setw(w_) << g_force_moment[2] << std::setw(w_)
-             << g_force_moment[3] << std::setw(w_) << g_force_moment[4] << std::setw(w_) << g_force_moment[5] <<  std::setw(w_)
-             << g_force_moment[6] << std::setw(w_) << g_force_moment[7] << std::setw(w_) << g_force_moment[8] <<  std::setw(w_)
-             << g_yplusMin << std::setw(w_) << g_yplusMax << std::endl;
-      myfile.close();
-    }
+  // parallel assemble and output
+  double g_force_moment[9] = {};
+  stk::ParallelMachine comm = NaluEnv::self().parallel_comm();
+  
+  // Parallel assembly of L2
+  stk::all_reduce_sum(comm, &l_force_moment[0], &g_force_moment[0], 9);
+  
+  // min/max
+  double g_yplusMin = 0.0, g_yplusMax = 0.0;
+  stk::all_reduce_min(comm, &yplusMin, &g_yplusMin, 1);
+  stk::all_reduce_max(comm, &yplusMax, &g_yplusMax, 1);
+  
+  // deal with file name and banner
+  if ( NaluEnv::self().parallel_rank() == 0 ) {
+    std::ofstream myfile;
+    myfile.open(outputFileName_.c_str(), std::ios_base::app);
+    myfile << std::setprecision(6) 
+           << std::setw(w_) 
+           << currentTime << std::setw(w_) 
+           << g_force_moment[0] << std::setw(w_) << g_force_moment[1] << std::setw(w_) << g_force_moment[2] << std::setw(w_)
+           << g_force_moment[3] << std::setw(w_) << g_force_moment[4] << std::setw(w_) << g_force_moment[5] <<  std::setw(w_)
+           << g_force_moment[6] << std::setw(w_) << g_force_moment[7] << std::setw(w_) << g_force_moment[8] <<  std::setw(w_)
+           << g_yplusMin << std::setw(w_) << g_yplusMax << std::endl;
+    myfile.close();
   }
-
+  
 }
 
 //--------------------------------------------------------------------------
@@ -419,7 +406,6 @@ SurfaceForceAndMomentWallFunctionAlgorithm::execute()
 void
 SurfaceForceAndMomentWallFunctionAlgorithm::pre_work()
 {
-
   // common
   stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();

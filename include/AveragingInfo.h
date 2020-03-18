@@ -40,16 +40,19 @@ public:
   bool computeTke_;
   bool computeFavreStress_;
   bool computeFavreTke_;
-  bool computeResolvedStress_{false};
-  bool computeSFSStress_{false};
+  bool computeResolvedStress_;
+  bool computeSFSStress_;
   bool computeVorticity_;
   bool computeQcriterion_;
   bool computeLambdaCI_;
   bool computeMeanResolvedKe_;
+  bool computeMeanErrorIndictor_;
+  bool computeDissipationRate_;
+  bool computeProduction_;
 
   // Temperature stresses
-  bool computeTemperatureSFS_{false};
-  bool computeTemperatureResolved_{false};
+  bool computeTemperatureSFS_;
+  bool computeTemperatureResolved_;
   
   // vector of part names, e.g., block_1, surface_2
   std::vector<std::string> targetNames_;

@@ -22,7 +22,9 @@
 #include <EnthalpyEquationSystem.h>
 #include <HeatCondEquationSystem.h>
 #include <LowMachEquationSystem.h>
+#include <LowMachFemEquationSystem.h>
 #include <MixtureFractionEquationSystem.h>
+#include <MixtureFractionFemEquationSystem.h>
 #include <ShearStressTransportEquationSystem.h>
 #include <MassFractionEquationSystem.h>
 #include <TurbKineticEnergyEquationSystem.h>
@@ -100,6 +102,11 @@ void EquationSystems::load(const YAML::Node & y_node)
           get_if_present_no_default(y_eqsys, "element_continuity_eqs", elemCont);
           eqSys = new LowMachEquationSystem(*this, elemCont);
         }
+        else if ( expect_map(y_system, "LowMachFemEOM", true) ) {
+	  y_eqsys =  expect_map(y_system, "LowMachFemEOM", true);
+          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = LowMachFemEOM " << std::endl;
+          eqSys = new LowMachFemEquationSystem(*this);
+        }
         else if( expect_map(y_system, "ShearStressTransport", true) ) {
 	  y_eqsys =  expect_map(y_system, "ShearStressTransport", true);
           if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = tke/sdr " << std::endl;
@@ -125,6 +132,17 @@ void EquationSystems::load(const YAML::Node & y_node)
           double deltaZClip = 0.0;
           get_if_present_no_default(y_eqsys, "clipping_delta", deltaZClip);
           eqSys = new MixtureFractionEquationSystem(*this, ouputClipDiag, deltaZClip);
+        }
+        else if( expect_map(y_system, "MixtureFractionFEM", true) ) {
+	  y_eqsys =  expect_map(y_system, "MixtureFractionFEM", true) ;
+          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = mixFracFEM " << std::endl;
+          bool ouputClipDiag = false;
+          get_if_present_no_default(y_eqsys, "output_clipping_diagnostic", ouputClipDiag);
+          double deltaZClip = 0.0;
+          get_if_present_no_default(y_eqsys, "clipping_delta", deltaZClip);
+          bool computePNG = false;
+          get_if_present_no_default(y_eqsys, "compute_png", computePNG);
+          eqSys = new MixtureFractionFemEquationSystem(*this, ouputClipDiag, deltaZClip, computePNG);
         }
         else if( expect_map(y_system, "Enthalpy", true) ) {
 	  y_eqsys =  expect_map(y_system, "Enthalpy", true);
@@ -575,7 +593,7 @@ EquationSystems::register_overset_bc(
 }
 
 //--------------------------------------------------------------------------
-//-------- register_surface_pp_algorithm ----------------------
+//-------- register_surface_pp_algorithm -----------------------------------
 //--------------------------------------------------------------------------
 void
 EquationSystems::register_surface_pp_algorithm(
@@ -662,24 +680,6 @@ EquationSystems::reinitialize_linear_system()
   }
   double end_time = NaluEnv::self().nalu_time();
   realm_.timerInitializeEqs_ += (end_time-start_time);
-}
-
-//--------------------------------------------------------------------------
-//-------- post_adapt_work() -----------------------------------------------
-//--------------------------------------------------------------------------
-void
-EquationSystems::post_adapt_work()
-{
-  double time = -NaluEnv::self().nalu_time();
-  for( EquationSystem* eqSys : equationSystemVector_ )
-    eqSys->post_adapt_work();
-  
-  // everyone needs props to be done..
-  realm_.evaluate_properties();
-
-  // load all time to adapt
-  time += NaluEnv::self().nalu_time();
-  realm_.timerAdapt_ += time;
 }
 
 //--------------------------------------------------------------------------

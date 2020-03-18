@@ -33,6 +33,19 @@ public:
     SharedMemView<DoubleType***>&gradop,
     SharedMemView<DoubleType***>&deriv);
 
+  void shifted_grad_op(
+    SharedMemView<DoubleType**>&coords,
+    SharedMemView<DoubleType***>&gradop,
+    SharedMemView<DoubleType***>&deriv);
+
+  void grad_op(
+    const int nelem,
+    const double *coords,
+    double *gradop,
+    double *deriv,
+    double *det_j,
+    double * error );
+
   void determinant(
     const int nelem,
     const double *coords,
@@ -118,6 +131,11 @@ public:
     double *det_j,
     double * error );
 
+  void shifted_face_grad_op(
+    int face_ordinal,
+    SharedMemView<DoubleType**>& coords,
+    SharedMemView<DoubleType***>& gradop) final;
+
   void gij(
     SharedMemView<DoubleType**>& coords,
     SharedMemView<DoubleType***>& gupper,
@@ -131,6 +149,8 @@ public:
     double *deriv);
 
   const int * adjacentNodes();
+
+  const int * scsIpEdgeOrd();
 
   void shape_fcn(
     double *shpfc);

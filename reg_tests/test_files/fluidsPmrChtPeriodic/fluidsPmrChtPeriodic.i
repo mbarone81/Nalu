@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -102,7 +100,6 @@ realms:
       target_name: [surface_1, surface_2]
       periodic_user_data:
         search_tolerance: 1.e-5
-        search_method: boost_rtree
 
     - wall_boundary_condition: bc_3
       target_name: surface_3
@@ -153,6 +150,11 @@ realms:
        - irradiation
        - assembled_boundary_area
 
+    restart:
+      restart_data_base_name: pmr.rst
+      restart_frequency: 5
+      restart_start: 5
+
   - name: fluidRealm
     mesh: ../../mesh/pmrA_mks_R1n.g
     use_edges: yes 
@@ -195,7 +197,7 @@ realms:
       specifications:
  
         - name: density
-          type: ideal_gas_t
+          type: ideal_gas
 
         - name: viscosity
           type: polynomial
@@ -226,7 +228,6 @@ realms:
       target_name: [surface_1, surface_2]
       periodic_user_data:
         search_tolerance: 1.e-5
-        search_method: boost_rtree
 
     - wall_boundary_condition: bc_inner
       target_name: surface_3
@@ -268,7 +269,7 @@ realms:
             enthalpy: yes 
 
     output:
-      output_data_base_name: fluid.e
+      output_data_base_name: fluids.e
       output_frequency: 5
       output_node_set: no
       output_variables:
@@ -279,6 +280,11 @@ realms:
        - enthalpy
        - heat_transfer_coefficient
        - reference_temperature
+
+    restart:
+      restart_data_base_name: fluids.rst
+      restart_frequency: 5
+      restart_start: 5
 
   - name: thermalRealm
     mesh: ../../mesh/jacket_s2.g
@@ -303,14 +309,13 @@ realms:
       target_name: surface_2
       wall_user_data:
         reference_temperature: 300
-        heat_transfer_coefficient: 0.0
+        heat_transfer_coefficient: 1.0
         interface: yes
 
     - periodic_boundary_condition: bc_left_right
       target_name: [surface_3, surface_4]
       periodic_user_data:
         search_tolerance: 1.e-2
-        search_method: boost_rtree
 
     solution_options:
       name: myOptionsHC
@@ -366,6 +371,11 @@ realms:
        - irradiation
        - heat_transfer_coefficient
        - reference_temperature
+
+    restart:
+      restart_data_base_name: thermal.rst
+      restart_frequency: 5
+      restart_start: 5
 
 Time_Integrators:
   - StandardTimeIntegrator:

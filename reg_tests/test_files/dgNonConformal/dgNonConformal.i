@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -41,17 +39,42 @@ realms:
          temperature: steady_2d_thermal
 
     material_properties:
-      target_name: [block_1, block_2]
-      specifications:
-        - name: density
-          type: constant
-          value: 1.0
-        - name: thermal_conductivity
-          type: constant
-          value: 1.0
-        - name: specific_heat
-          type: constant
-          value: 1.0
+
+      properties:
+
+        - name: mat_b1
+          target_name: [block_1]
+
+          specifications:
+
+            - name: density
+              type: constant
+              value: 1.0
+
+            - name: specific_heat
+              type: constant
+              value: 1.0
+
+            - name: thermal_conductivity
+              type: constant
+              value: 1.0
+
+        - name: mat_b2
+          target_name: [block_2]
+
+          specifications:
+
+            - name: density
+              type: constant
+              value: 1.0
+
+            - name: specific_heat
+              type: constant
+              value: 1.0
+
+            - name: thermal_conductivity
+              type: constant
+              value: 1.0
 
     boundary_conditions:
 

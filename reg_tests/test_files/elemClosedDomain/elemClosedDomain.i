@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -69,7 +67,7 @@ realms:
       specifications:
  
         - name: density
-          type: ideal_gas_t_p
+          type: ideal_gas
 
         - name: viscosity
           type: polynomial
@@ -117,7 +115,7 @@ realms:
     solution_options:
       name: myOptions
 
-      interp_rhou_together_for_mdot: no
+      use_accoustically_compressible_algorithm: yes
 
       options:
         - hybrid_factor:

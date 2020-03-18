@@ -73,12 +73,10 @@ MomentumSymmetryElemKernel<BcAlgTraits>::execute(
   SharedMemView<DoubleType**> &lhs,
   SharedMemView<DoubleType *> &rhs,
   ScratchViews<DoubleType> &faceScratchViews,
-  ScratchViews<DoubleType> &elemScratchViews)
+  ScratchViews<DoubleType> &elemScratchViews,
+  int elemFaceOrdinal)
 {
-  DoubleType w_nx[BcAlgTraits::nDim_];
-
-  // FIXME #2 hard-code a face_node_ordinal and ordinal
-  const int face_ordinal = 1;
+  NALU_ALIGNED DoubleType w_nx[BcAlgTraits::nDim_];
 
   // face
   SharedMemView<DoubleType*>& vf_viscosity = faceScratchViews.get_scratch_view_1D(*viscosity_);
@@ -86,13 +84,13 @@ MomentumSymmetryElemKernel<BcAlgTraits>::execute(
  
   // element
   SharedMemView<DoubleType**>& v_uNp1 = elemScratchViews.get_scratch_view_2D(*velocityNp1_);
-  SharedMemView<DoubleType***>& v_dndx = shiftedGradOp_
-    ? elemScratchViews.get_me_views(CURRENT_COORDINATES).dndx_shifted_fc_scs
-    : elemScratchViews.get_me_views(CURRENT_COORDINATES).dndx_fc_scs;
+  SharedMemView<DoubleType***>& v_dndx_fc_elem = shiftedGradOp_
+    ? elemScratchViews.get_me_views(CURRENT_COORDINATES).dndx_shifted_fc_elem
+    : elemScratchViews.get_me_views(CURRENT_COORDINATES).dndx_fc_elem;
 
   for (int ip=0; ip < BcAlgTraits::numFaceIp_; ++ip) {
     
-    const int nearestNode = meSCS_->ipNodeMap(face_ordinal)[ip]; // "Right"
+    const int nearestNode = meSCS_->ipNodeMap(elemFaceOrdinal)[ip]; // "Right"
     
     // form unit normal
     DoubleType asq = 0.0;
@@ -118,7 +116,7 @@ MomentumSymmetryElemKernel<BcAlgTraits>::execute(
       for ( int j = 0; j < BcAlgTraits::nDim_; ++j ) {
         
         const DoubleType axj = vf_exposedAreaVec(ip,j);
-        const DoubleType dndxj = v_dndx(ip,ic,j);
+        const DoubleType dndxj = v_dndx_fc_elem(ip,ic,j);
         const DoubleType uxj = v_uNp1(ic,j);
         
         const DoubleType divUstress = 2.0/3.0*viscBip*dndxj*uxj*axj*includeDivU_;
@@ -127,7 +125,7 @@ MomentumSymmetryElemKernel<BcAlgTraits>::execute(
 
           const int indexR = nearestNode*BcAlgTraits::nDim_ +i;
 
-          const DoubleType dndxi = v_dndx(ip,ic,i);
+          const DoubleType dndxi = v_dndx_fc_elem(ip,ic,i);
           const DoubleType uxi = v_uNp1(ic,i);
           const DoubleType nxi = w_nx[i];
           const DoubleType nxinxi = nxi*nxi;
@@ -148,7 +146,7 @@ MomentumSymmetryElemKernel<BcAlgTraits>::execute(
             if ( i != l ) {
               const DoubleType nxinxl = nxi*w_nx[l];
               const DoubleType uxl = v_uNp1(ic,l);
-              const DoubleType dndxl = v_dndx(ip,ic,l);
+              const DoubleType dndxl = v_dndx_fc_elem(ip,ic,l);
               
               // -ni*nl*mu*dul/dxj*Aj; sneak in divU (explicit)
               lhsfac = -viscBip*dndxj*axj*nxinxl;

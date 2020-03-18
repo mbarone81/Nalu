@@ -35,6 +35,11 @@ public:
     SharedMemView<DoubleType***>&gradop,
     SharedMemView<DoubleType***>&deriv);
 
+  void shifted_grad_op(
+    SharedMemView<DoubleType**>&coords,
+    SharedMemView<DoubleType***>&gradop,
+    SharedMemView<DoubleType***>&deriv);
+
   void determinant(
     const int nelem,
     const double *coords,
@@ -104,6 +109,11 @@ public:
     SharedMemView<DoubleType**>& coords,
     SharedMemView<DoubleType***>& gradop) final;
 
+  void shifted_face_grad_op(
+    int face_ordinal,
+    SharedMemView<DoubleType**>& coords,
+    SharedMemView<DoubleType***>& gradop) final;
+
   void shifted_grad_op(
     SharedMemView<DoubleType**>&coords,
     SharedMemView<DoubleType***>&gradop,
@@ -118,7 +128,6 @@ public:
     SharedMemView<DoubleType***>& gupper,
     SharedMemView<DoubleType***>& glower,
     SharedMemView<DoubleType***>& deriv);
-
 
   // non NGP-ready methods second
   void determinant(
@@ -167,6 +176,8 @@ public:
 
   const int * adjacentNodes();
 
+  const int * scsIpEdgeOrd();
+
   void shape_fcn(
     double *shpfc);
 
@@ -212,6 +223,14 @@ public:
   const int* side_node_ordinals(int sideOrdinal) final;
 
   double parametric_distance(const std::vector<double> &x);
+
+private :
+
+  void face_grad_op(
+    const int face_ordinal,
+    const bool shifted,
+    SharedMemView<DoubleType**>& coords,
+    SharedMemView<DoubleType***>& gradop);
 };
     
 } // namespace nalu

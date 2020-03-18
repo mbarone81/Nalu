@@ -55,7 +55,7 @@ Transfer::Transfer(
     name_("none"),
     transferType_("none"),
     transferObjective_("multi_physics"),
-    searchMethodName_("none"),
+    searchMethodName_("stk_kdtree"),
     searchTolerance_(1.0e-4),
     searchExpansionFactor_(1.5)
 {
@@ -340,7 +340,7 @@ void Transfer::allocate_stk_transfer() {
   const std::vector<std::pair<std::string, std::string> > &FromVar = transferVariablesPairName_;
   const stk::ParallelMachine    &fromComm    = fromRealm_->bulk_data().parallel();
 
-  boost::shared_ptr<FromMesh >
+  std::shared_ptr<FromMesh >
     from_mesh (new FromMesh(fromMetaData, fromBulkData, *fromRealm_, fromcoordName, FromVar, fromPartVec_, fromComm));
 
   stk::mesh::MetaData    &toMetaData = toRealm_->meta_data();
@@ -349,19 +349,16 @@ void Transfer::allocate_stk_transfer() {
   const std::vector<std::pair<std::string, std::string> > &toVar = transferVariablesPairName_;
   const stk::ParallelMachine    &toComm    = toRealm_->bulk_data().parallel();
 
-  boost::shared_ptr<ToMesh >
+  std::shared_ptr<ToMesh >
     to_mesh (new ToMesh(toMetaData, toBulkData, *toRealm_, tocoordName, toVar, toPartVec_, toComm, searchTolerance_));
 
   typedef stk::transfer::GeometricTransfer< class LinInterp< class FromMesh, class ToMesh > > STKTransfer;
 
-  // extract search type
-  stk::search::SearchMethod searchMethod = stk::search::KDTREE;
-  if ( searchMethodName_ == "boost_rtree" )
-    searchMethod = stk::search::BOOST_RTREE;
-  else if ( searchMethodName_ == "stk_kdtree" )
-    searchMethod = stk::search::KDTREE;
-  else
-    NaluEnv::self().naluOutputP0() << "Transfer::search method not declared; will use stk_kdtree" << std::endl;
+  // extract search type; at present, only one supported
+  const stk::search::SearchMethod searchMethod = stk::search::KDTREE;
+  if ( searchMethodName_ != "stk_kdtree" )
+    NaluEnv::self().naluOutputP0() << "Transfer::search_method only supports stk_kdtree" 
+                                   << std::endl;
   transfer_.reset(new STKTransfer(from_mesh, to_mesh, name_, searchExpansionFactor_, searchMethod));
 }
 
@@ -371,13 +368,13 @@ void Transfer::allocate_stk_transfer() {
 void Transfer::ghost_from_elements()
 {
   typedef stk::transfer::GeometricTransfer< class LinInterp< class FromMesh, class ToMesh > > STKTransfer;
-
-  const boost::shared_ptr<STKTransfer> transfer =
-      boost::dynamic_pointer_cast<STKTransfer>(transfer_);
-  const boost::shared_ptr<STKTransfer::MeshA> mesha = transfer->mesha();
-
-  STKTransfer::MeshA::EntityProcVec entity_keys;
+  
+  const std::shared_ptr<STKTransfer> transfer =
+    std::dynamic_pointer_cast<STKTransfer>(transfer_);
+  typename STKTransfer::MeshA::EntityProcVec entity_keys;
   transfer->determine_entities_to_copy(entity_keys);
+
+  const std::shared_ptr<typename STKTransfer::MeshA> mesha = transfer->meshA();
   mesha->update_ghosting(entity_keys);
 }
 

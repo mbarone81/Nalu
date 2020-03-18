@@ -36,8 +36,9 @@ public:
     stk::mesh::Entity node);
   
   ScalarFieldType *divRadFlux_;
+  ScalarFieldType *divRadFluxLin_;
+  ScalarFieldType *specificHeat_;
   ScalarFieldType *dualNodalVolume_;
-  
 };
 
 } // namespace nalu

@@ -5,14 +5,13 @@
 /*  directory structure                                                   */
 /*------------------------------------------------------------------------*/
 
-/*------------------------------------------------------------------------*/
 
 #include <NaluParsing.h>
 #include <NaluEnv.h>
 #include <Simulation.h>
 #include <Enums.h>
 
-#include <stk_util/environment/ReportHandler.hpp>
+#include <stk_util/util/ReportHandler.hpp>
 
 // yaml for parsing..
 #include <yaml-cpp/yaml.h>
@@ -682,18 +681,6 @@ namespace YAML
     return true;
   }
 
-  bool convert<sierra::nalu::RoughnessHeight>::decode(const Node& node,
-    sierra::nalu::RoughnessHeight& z0)
-  {
-    if (!node.IsScalar())
-    {
-      return false;
-    }
-
-    z0.z0_ = node.as<double>();
-
-    return true;
-  }
 
   bool convert<sierra::nalu::NormalHeatFlux>::decode(const Node& node,
     sierra::nalu::NormalHeatFlux& q)
@@ -831,22 +818,15 @@ namespace YAML
     {
       wallData.isInterface_ = node["interface"].as<bool>();
     }
-
+    if (node["post_process_heat_flux"])
+    {
+      wallData.ppHeatFlux_ = node["post_process_heat_flux"].as<bool>();
+    }
     if (node["reference_temperature"])
     {
       wallData.referenceTemperature_ = node["reference_temperature"].as<
           sierra::nalu::ReferenceTemperature>();
       wallData.refTempSpec_ = true;
-    }
-    if (node["gravity_vector_component"])
-    {
-      wallData.gravityComponent_ =
-          node["gravity_vector_component"].as<unsigned>();
-    }
-    if (node["roughness_height"])
-    {
-      wallData.z0_ =
-          node["roughness_height"].as<sierra::nalu::RoughnessHeight>();
     }
     if (node["heat_transfer_coefficient"])
     {
@@ -870,11 +850,13 @@ namespace YAML
     {
       wallData.wallFunctionApproach_ = node["use_wall_function"].as<bool>();
     }
-    if (node["use_abl_wall_function"])
+    if (node["use_wall_function_projected"]) 
     {
-      wallData.wallFunctionApproach_ = node["use_abl_wall_function"].as<bool>();
-      wallData.ablWallFunctionApproach_ =
-          node["use_abl_wall_function"].as<bool>();
+      wallData.wallFunctionProjectedApproach_ = node["use_wall_function_projected"].as<bool>();
+    }
+    if (node["projected_distance"]) 
+    {
+      wallData.projectedDistance_ = node["projected_distance"].as<double>();
     }
     if (node["pressure"])
     {
@@ -1072,6 +1054,12 @@ namespace YAML
           node["temperature"].as<sierra::nalu::Temperature>();
       openData.tempSpec_ = true;
     }
+    
+    if (node["use_total_pressure"])
+    {
+      openData.useTotalP_ =
+        node["use_total_pressure"].as<bool>();
+    }
 
     return true;
   }
@@ -1079,13 +1067,18 @@ namespace YAML
   bool convert<sierra::nalu::OversetUserData>::decode(const Node& node,
     sierra::nalu::OversetUserData& oversetData)
   {
-    // nothing is optional
+    // most things are not optional
     if (node["percent_overlap"])
     {
       oversetData.percentOverlap_ = node["percent_overlap"].as<double>();
     } else
     {
       throw std::runtime_error("One MUST specify overset overlap percentage");
+    }
+
+    if (node["percent_overlap_inner"])
+    {
+      oversetData.percentOverlapInner_ = node["percent_overlap_inner"].as<double>();
     }
 
     if (node["background_block"])
@@ -1131,6 +1124,12 @@ namespace YAML
     {
       throw std::runtime_error("One MUST specify background cut surface");
     }
+
+    if (node["background_cut_block_inner"])
+    {
+      oversetData.backgroundInnerBlock_ = node["background_cut_block_inner"].as<
+          std::string>();
+    } 
 
     if (node["overset_surface"])
     {

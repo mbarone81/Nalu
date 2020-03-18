@@ -6,8 +6,6 @@ set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 option(ENABLE_TESTS "Enable regression testing." OFF)
 option(ENABLE_DOCUMENTATION "Build documentation." OFF)
 option(ENABLE_SPHINX_API_DOCS "Link Doxygen API docs to Sphinx" OFF)
-option(ENABLE_OPENFAST
-       "Use OPENFAST tpl to get actuator line positions and forces" OFF)
 option(ENABLE_PARAVIEW_CATALYST
       "Enable ParaView Catalyst. Requires external installation of Trilinos Catalyst IOSS adapter."
        OFF)
@@ -20,7 +18,7 @@ option(ENABLE_EXTRA_WARNINGS "Add -Wextra to show even more compiler warnings" O
 message("   Trilinos_DIR = ${Trilinos_DIR}")
 set(CMAKE_PREFIX_PATH ${Trilinos_DIR} ${CMAKE_PREFIX_PATH})
 set(CMAKE_PREFIX_PATH ${Trilinos_PATH} ${CMAKE_PREFIX_PATH})
-find_package(Trilinos REQUIRED)
+find_package(Trilinos NO_MODULE NO_CMAKE_ENVIRONMENT_PATH NO_SYSTEM_ENVIRONMENT_PATH REQUIRED)
 include_directories(SYSTEM ${Trilinos_INCLUDE_DIRS})
 include_directories(SYSTEM ${Trilinos_TPL_INCLUDE_DIRS})
 
@@ -90,17 +88,6 @@ if(ENABLE_HYPRE)
   include_directories(SYSTEM ${HYPRE_INCLUDE_DIRS})
   add_definitions("-DNALU_USES_HYPRE")
 endif(ENABLE_HYPRE)
-
-########################## OPENFAST ####################################
-if(ENABLE_OPENFAST)
-  set(CMAKE_PREFIX_PATH ${OpenFAST_DIR} ${CMAKE_PREFIX_PATH})
-  find_package(OpenFAST REQUIRED)
-  if(OpenFAST_FOUND)
-    message("-- Found OpenFAST = ${OpenFAST_DIR}")
-  endif()
-  include_directories(${OpenFAST_INCLUDE_DIRS})
-  add_definitions("-DNALU_USES_OPENFAST")
-endif(ENABLE_OPENFAST)
 
 ############################ TIOGA #####################################
 if(ENABLE_TIOGA)
@@ -199,10 +186,6 @@ add_library(nalu ${SOURCE} ${HEADER})
 target_link_libraries(nalu ${Trilinos_LIBRARIES})
 target_link_libraries(nalu ${YAML_CPP_LIBRARIES})
 
-if(ENABLE_OPENFAST)
-  target_link_libraries(nalu ${OpenFAST_LIBRARIES} ${OpenFAST_CPP_LIBRARIES})
-endif (ENABLE_OPENFAST)
-
 if(ENABLE_TIOGA)
   target_link_libraries(nalu ${TIOGA_LIBRARIES})
 endif()
@@ -240,6 +223,7 @@ if(ENABLE_PARAVIEW_CATALYST)
        PATH
        "Path to external installation of Trilinos Catalyst IOSS plugin.")
    configure_file(cmake/naluXCatalyst.in ${nalu_ex_catalyst_name} @ONLY)
+  add_definitions("-DNALU_USES_CATALYST")
 endif()
 
 install(TARGETS ${utest_ex_name} ${nalu_ex_name} nalu
@@ -258,6 +242,7 @@ if(ENABLE_DOCUMENTATION)
 endif()
 
 if(ENABLE_TESTS)
+   message(" Enabling regression test suite")
    enable_testing()
    include(CTest)
    add_subdirectory(reg_tests)

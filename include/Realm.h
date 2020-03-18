@@ -52,10 +52,6 @@ class AuxFunctionAlgorithm;
 class ComputeGeometryAlgorithmDriver;
 // class OversetManager;
 class NonConformalManager;
-class ErrorIndicatorAlgorithmDriver;
-#if defined (NALU_USES_PERCEPT)
-class Adapter;
-#endif
 class EquationSystems;
 class OutputInfo;
 class PostProcessingInfo;
@@ -73,12 +69,6 @@ class SolutionNormPostProcessing;
 class TurbulenceAveragingPostProcessing;
 class DataProbePostProcessing;
 class Actuator;
-class ABLForcingAlgorithm;
-
-class TensorProductQuadratureRule;
-class LagrangeBasis;
-class PromotedElementIO;
-struct ElementDescription;
 
 /** Representation of a computational domain and physics equations solved on
  * this domain.
@@ -111,8 +101,6 @@ class Realm {
 
   void create_mesh();
 
-  void setup_adaptivity();
-
   void setup_nodal_fields();
   void setup_edge_fields();
   void setup_element_fields();
@@ -123,8 +111,6 @@ class Realm {
   void enforce_bc_on_exposed_faces();
   void setup_initial_conditions();
   void setup_property();
-  void extract_universal_constant( 
-    const std::string name, double &value, const bool useDefault);
   void augment_property_map(
     PropertyIdentifier propID,
     ScalarFieldType *theField);
@@ -165,7 +151,7 @@ class Realm {
 
   // overset boundary condition requires elemental field registration
   bool query_for_overset();
-
+  
   void set_omega(
     stk::mesh::Part *targetPart,
     double omega);
@@ -180,6 +166,14 @@ class Realm {
     const std::vector<double> &centroidCoords,
     const std::vector<double> &unitVec);
   void mesh_velocity_cross_product(double *o, double *c, double *u);
+
+  // allow for a single mesh displacement (coords change, however, mesh motion fixed)
+  void process_initial_displacement();
+  void set_initial_displacement(
+    stk::mesh::Part *targetPart,
+    const std::vector<double> &centroidCoords,
+    const std::vector<double> &unitVec,
+    const double theAngle);
 
   // non-conformal-like algorithm suppoer
   void initialize_non_conformal();
@@ -267,7 +261,7 @@ class Realm {
   virtual void pre_timestep_work();
   virtual void output_banner();
   virtual void advance_time_step();
- 
+  virtual bool active_time_step();
   virtual void initial_work();
   
   void set_global_id();
@@ -323,7 +317,6 @@ class Realm {
     const std::string dofname);
 
   // pressure poisson nuance
-  double get_mdot_interp();
   bool get_cvfem_shifted_mdot();
   bool get_cvfem_reduced_sens_poisson();
   
@@ -332,9 +325,9 @@ class Realm {
   bool get_nc_alg_include_pstab();
   bool get_nc_alg_current_normal();
 
-  PropertyEvaluator *
-  get_material_prop_eval(
-    const PropertyIdentifier thePropID);
+  void get_material_prop_eval(
+    const PropertyIdentifier thePropID,
+    std::vector<PropertyEvaluator*> &propEvalVec);
 
   bool is_turbulent();
   void is_turbulent(
@@ -348,11 +341,9 @@ class Realm {
   std::string name();
 
   // redirection of stk::mesh::get_buckets to allow global selector
-  //  to be applied, e.g., in adaptivity we need to avoid the parent
-  //  elements
-  stk::mesh::BucketVector const& get_buckets( stk::mesh::EntityRank rank,
-                                              const stk::mesh::Selector & selector ,
-                                              bool get_all = false) const;
+  stk::mesh::BucketVector const& get_buckets( 
+    stk::mesh::EntityRank rank,
+    const stk::mesh::Selector & selector) const;
 
   // get aura, bulk and meta data
   bool get_activate_aura();
@@ -399,10 +390,7 @@ class Realm {
 
   // algorithm drivers managed by region
   ComputeGeometryAlgorithmDriver *computeGeometryAlgDriver_;
-  ErrorIndicatorAlgorithmDriver *errorIndicatorAlgDriver_;
-# if defined (NALU_USES_PERCEPT)  
-  Adapter *adapter_;
-#endif
+  AlgorithmDriver *errorIndicatorAlgDriver_;
   unsigned numInitialElements_;
   // for element, side, edge, node rank (node not used)
   stk::mesh::Selector adapterSelector_[4];
@@ -429,7 +417,6 @@ class Realm {
   TurbulenceAveragingPostProcessing *turbulenceAveragingPostProcessing_;
   DataProbePostProcessing *dataProbePostProcessing_;
   Actuator *actuator_;
-  ABLForcingAlgorithm *ablForcingAlg_;
 
   std::vector<Algorithm *> propertyAlg_;
   std::map<PropertyIdentifier, ScalarFieldType *> propertyMap_;
@@ -450,7 +437,6 @@ class Realm {
   double timerTransferSearch_;
   double timerTransferExecute_;
   double timerSkinMesh_;
-  double timerPromoteMesh_;
   double timerSortExposedFace_;
 
   NonConformalManager *nonConformalManager_;
@@ -477,11 +463,15 @@ class Realm {
   // part for new edges
   stk::mesh::Part *edgesPart_;
 
+  // cheack that all exposed surfaces have a bc applied
   bool checkForMissingBcs_;
 
+  // check if there are negative Jacobians
+  bool checkJacobians_;
+  
   // types of physics
-  bool isothermalFlow_;
-  bool uniformFlow_;
+  bool isothermal_;
+  bool uniform_;
 
   // some post processing of entity counts
   bool provideEntityCount_;
@@ -533,9 +523,8 @@ class Realm {
   // empty part vector should it be required
   stk::mesh::PartVector emptyPartVector_;
 
-  // base and promote mesh parts
+  // base mesh parts
   stk::mesh::PartVector basePartVector_;
-  stk::mesh::PartVector superPartVector_;
 
   std::vector<AuxFunctionAlgorithm *> bcDataAlg_;
 
@@ -545,7 +534,7 @@ class Realm {
   std::vector<Transfer *> ioTransferVec_;
   std::vector<Transfer *> externalDataTransferVec_;
   void augment_transfer_vector(Transfer *transfer, const std::string transferObjective, Realm *toRealm);
-  void process_multi_physics_transfer();
+  void process_multi_physics_transfer(bool forcedXfer = false);
   void process_initialization_transfer();
   void process_io_transfer();
   void process_external_data_transfer();
@@ -573,28 +562,15 @@ class Realm {
   double get_stefan_boltzmann();
   double get_turb_model_constant(
     const TurbulenceModelConstant turbModelEnum);
-  bool process_adaptivity();
 
-  // element promotion options
-  bool doPromotion_; // conto
-  unsigned promotionOrder_;
-  
   // id for the input mesh
   size_t inputMeshIdx_;
 
   // save off the node
   const YAML::Node & node_;
 
-  // tools
-  std::unique_ptr<ElementDescription> desc_; // holds topo info
-  std::unique_ptr<PromotedElementIO> promotionIO_; // mesh outputer
-  std::vector<std::string> superTargetNames_;
-
-  void setup_element_promotion(); // create super parts
-  void promote_mesh(); // create new super element / sides on parts
-  void create_promoted_output_mesh(); // method to create output of linear subelements
-  bool using_SGL_quadrature() const { return get_quad_type() == "SGL"; };
-  bool high_order_active() const { return doPromotion_; };
+  // flag for CVFEM usage
+  bool usesCVFEM_;
 
   std::string physics_part_name(std::string) const;
   std::vector<std::string> physics_part_names(std::vector<std::string>) const;

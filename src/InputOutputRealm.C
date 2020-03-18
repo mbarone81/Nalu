@@ -6,12 +6,12 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <InputOutputRealm.h>
-#include <Realm.h>
-#include <SolutionOptions.h>
+#include "InputOutputRealm.h"
+#include "Realm.h"
+#include "SolutionOptions.h"
 
 // transfer
-#include <xfer/Transfer.h>
+#include "xfer/Transfer.h"
 
 // stk_mesh/base/fem
 #include <stk_mesh/base/BulkData.hpp>
@@ -58,12 +58,14 @@ InputOutputRealm::~InputOutputRealm()
 void 
 InputOutputRealm::initialize()
 {
-  // bar minimum to register fields and to extract from possible mesh file
+  // bare minimum to register fields and to extract from possible mesh file
+  setup_post_processing_algorithms();
   register_io_fields();
   ioBroker_->populate_mesh();
   ioBroker_->populate_field_data();
   create_output_mesh();
   input_variables_from_mesh();
+  initialize_post_processing_algorithms();
 }
 
 //--------------------------------------------------------------------------
@@ -94,12 +96,12 @@ InputOutputRealm::register_io_fields() {
       else { 
         if ( fieldName.find(velocityName) != std::string::npos ) { //FIXME: require FieldType?
           VectorFieldType *velocity = &(metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, fieldName));
-          stk::mesh::put_field(*velocity, *targetPart, fieldSize);
+          stk::mesh::put_field_on_mesh(*velocity, *targetPart, fieldSize, nullptr);
         }
         else {
-          stk::mesh::FieldBase *theField 
+          stk::mesh::Field<double, stk::mesh::SimpleArrayTag> *theField 
             = &(metaData_->declare_field< stk::mesh::Field<double, stk::mesh::SimpleArrayTag> >(stk::topology::NODE_RANK, fieldName));
-          stk::mesh::put_field(*theField,*targetPart,fieldSize);
+          stk::mesh::put_field_on_mesh(*theField,*targetPart,fieldSize, nullptr);
         }
       }
     }

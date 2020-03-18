@@ -10,9 +10,9 @@
 #include "master_element/MasterElement.h"
 #include "PecletFunction.h"
 #include "SolutionOptions.h"
-#include "BuildTemplates.h"
 
 // template and scratch space
+#include "BuildTemplates.h"
 #include "ScratchViews.h"
 
 // stk_mesh/base/fem
@@ -39,9 +39,8 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::MomentumOpenAdvDiffElemKernel(
     alphaUpw_(solnOpts.get_alpha_upw_factor("velocity")),
     om_alphaUpw_(1.0-alphaUpw_),
     hoUpwind_(solnOpts.get_upw_factor("velocity")),
-    nfEntrain_(solnOpts.nearestFaceEntrain_),
-    om_nfEntrain_(1.0-nfEntrain_),
     includeDivU_(solnOpts.includeDivU_),
+    meshVelocityCorrection_(solnOpts.does_mesh_move() ? 1.0 : 0.0),
     shiftedGradOp_(solnOpts.get_shifted_grad_op(velocity->name())),
     faceIpNodeMap_(sierra::nalu::MasterElementRepo::get_surface_master_element(BcAlgTraits::faceTopo_)->ipNodeMap()),
     meSCS_(sierra::nalu::MasterElementRepo::get_surface_master_element(BcAlgTraits::elemTopo_)),
@@ -49,10 +48,14 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::MomentumOpenAdvDiffElemKernel(
 {
   // save off fields
   velocityNp1_ = &(velocity->field_of_state(stk::mesh::StateNP1));
-  if ( solnOpts.does_mesh_move() )
+  if ( solnOpts.does_mesh_move() ) {
     velocityRTM_ = metaData.get_field<VectorFieldType>(stk::topology::NODE_RANK, "velocity_rtm");
-  else
-    velocityRTM_ = velocity;
+    meshVelocity_ = metaData.get_field<VectorFieldType>(stk::topology::NODE_RANK, "mesh_velocity");
+  }
+  else {
+    velocityRTM_ = velocityNp1_;
+    meshVelocity_ = velocityNp1_;
+  }
   coordinates_ = metaData.get_field<VectorFieldType>(stk::topology::NODE_RANK, solnOpts.get_coordinates_name());
   density_ = metaData.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "density");
   exposedAreaVec_ = metaData.get_field<GenericFieldType>(metaData.side_rank(), "exposed_area_vector");
@@ -67,14 +70,16 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::MomentumOpenAdvDiffElemKernel(
   elemDataPreReqs.add_cvfem_surface_me(meSCS_);
 
   // fields and data; face and then element
+  faceDataPreReqs.add_gathered_nodal_field(*density_, 1);
   faceDataPreReqs.add_gathered_nodal_field(*viscosity_, 1);
   faceDataPreReqs.add_gathered_nodal_field(*velocityNp1_, BcAlgTraits::nDim_);
+  faceDataPreReqs.add_gathered_nodal_field(*meshVelocity_, BcAlgTraits::nDim_);
   faceDataPreReqs.add_gathered_nodal_field(*velocityBc_, BcAlgTraits::nDim_);
   faceDataPreReqs.add_gathered_nodal_field(*Gjui_, BcAlgTraits::nDim_, BcAlgTraits::nDim_);
   faceDataPreReqs.add_coordinates_field(*coordinates_, BcAlgTraits::nDim_, CURRENT_COORDINATES);
   faceDataPreReqs.add_face_field(*exposedAreaVec_, BcAlgTraits::numFaceIp_, BcAlgTraits::nDim_);
   faceDataPreReqs.add_face_field(*openMassFlowRate_, BcAlgTraits::numFaceIp_);
-
+  
   elemDataPreReqs.add_coordinates_field(*coordinates_, BcAlgTraits::nDim_, CURRENT_COORDINATES);
   elemDataPreReqs.add_gathered_nodal_field(*velocityNp1_, BcAlgTraits::nDim_);
   elemDataPreReqs.add_gathered_nodal_field(*velocityRTM_, BcAlgTraits::nDim_);
@@ -88,13 +93,11 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::MomentumOpenAdvDiffElemKernel(
 
   // never shift properties
   get_face_shape_fn_data<BcAlgTraits>([&](double* ptr){meFC->shape_fcn(ptr);}, vf_shape_function_);
-  get_scs_shape_fn_data<BcAlgTraits>([&](double* ptr){meSCS_->shape_fcn(ptr);}, v_shape_function_);
 
+  // advection operator may use shifted
   const bool skewSymmetric = solnOpts.get_skew_symmetric(velocity->name());
   get_face_shape_fn_data<BcAlgTraits>([&](double* ptr){skewSymmetric ? meFC->shifted_shape_fcn(ptr) : meFC->shape_fcn(ptr);}, 
                                       vf_adv_shape_function_);
-  get_scs_shape_fn_data<BcAlgTraits>([&](double* ptr){skewSymmetric ? meSCS_->shifted_shape_fcn(ptr) : meSCS_->shape_fcn(ptr);}, 
-                                     v_adv_shape_function_);
 }
 
 template<typename BcAlgTraits>
@@ -110,22 +113,23 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::execute(
   SharedMemView<DoubleType**> &lhs,
   SharedMemView<DoubleType *> &rhs,
   ScratchViews<DoubleType> &faceScratchViews,
-  ScratchViews<DoubleType> &elemScratchViews)
+  ScratchViews<DoubleType> &elemScratchViews,
+  int elemFaceOrdinal)
 {
-  DoubleType w_uBip[BcAlgTraits::nDim_];
-  DoubleType w_uScs[BcAlgTraits::nDim_];
-  DoubleType w_uBipExtrap[BcAlgTraits::nDim_];
-  DoubleType w_uspecBip[BcAlgTraits::nDim_];
-  DoubleType w_coordBip[BcAlgTraits::nDim_];
-  DoubleType w_nx[BcAlgTraits::nDim_];
+  NALU_ALIGNED DoubleType w_uBip[BcAlgTraits::nDim_];
+  NALU_ALIGNED DoubleType w_rho_vBip[BcAlgTraits::nDim_];
+  NALU_ALIGNED DoubleType w_uBipExtrap[BcAlgTraits::nDim_];
+  NALU_ALIGNED DoubleType w_uspecBip[BcAlgTraits::nDim_];
+  NALU_ALIGNED DoubleType w_coordBip[BcAlgTraits::nDim_];
+  NALU_ALIGNED DoubleType w_nx[BcAlgTraits::nDim_];
 
-  // FIXME #1 and #2 hard-code a face_node_ordinal and ordinal
-  const int face_node_ordinals[BcAlgTraits::nodesPerFace_] = {};
-  const int face_ordinal = 1;
-
+  const int *face_node_ordinals = meSCS_->side_node_ordinals(elemFaceOrdinal);
+ 
   // face
+  SharedMemView<DoubleType*>& vf_density = faceScratchViews.get_scratch_view_1D(*density_);
   SharedMemView<DoubleType*>& vf_viscosity = faceScratchViews.get_scratch_view_1D(*viscosity_);
   SharedMemView<DoubleType**>& vf_velocityNp1 = faceScratchViews.get_scratch_view_2D(*velocityNp1_);
+  SharedMemView<DoubleType**>& vf_meshVelocity = faceScratchViews.get_scratch_view_2D(*meshVelocity_);
   SharedMemView<DoubleType**>& vf_bcVelocity = faceScratchViews.get_scratch_view_2D(*velocityBc_);
   SharedMemView<DoubleType***>& vf_Gjui = faceScratchViews.get_scratch_view_3D(*Gjui_);
   SharedMemView<DoubleType**>& vf_coordinates = faceScratchViews.get_scratch_view_2D(*coordinates_);
@@ -138,22 +142,21 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::execute(
   SharedMemView<DoubleType**>& v_vrtm = elemScratchViews.get_scratch_view_2D(*velocityRTM_);
   SharedMemView<DoubleType*>& v_viscosity = elemScratchViews.get_scratch_view_1D(*viscosity_);
   SharedMemView<DoubleType*>& v_density = elemScratchViews.get_scratch_view_1D(*density_);
-  SharedMemView<DoubleType***>& v_dndx = shiftedGradOp_
-    ? elemScratchViews.get_me_views(CURRENT_COORDINATES).dndx_shifted_fc_scs
-    : elemScratchViews.get_me_views(CURRENT_COORDINATES).dndx_fc_scs;
+  SharedMemView<DoubleType***>& v_dndx_fc_elem = shiftedGradOp_
+    ? elemScratchViews.get_me_views(CURRENT_COORDINATES).dndx_shifted_fc_elem
+    : elemScratchViews.get_me_views(CURRENT_COORDINATES).dndx_fc_elem;
 
   for (int ip=0; ip < BcAlgTraits::numFaceIp_; ++ip) {
     
-    const int opposingNode = meSCS_->opposingNodes(face_ordinal,ip); // "Left"
-    const int nearestNode = meSCS_->ipNodeMap(face_ordinal)[ip]; // "Right"
-    const int opposingScsIp = meSCS_->opposingFace(face_ordinal,ip);
+    const int opposingNode = meSCS_->opposingNodes(elemFaceOrdinal,ip); // "Left"
+    const int nearestNode = meSCS_->ipNodeMap(elemFaceOrdinal)[ip]; // "Right"
     const int localFaceNode = faceIpNodeMap_[ip];
     
     // zero out vector quantities
     DoubleType asq = 0.0;
     for ( int j = 0; j < BcAlgTraits::nDim_; ++j ) {
       w_uBip[j] = 0.0;
-      w_uScs[j] = 0.0;
+      w_rho_vBip[j] = 0.0;
       w_uspecBip[j] = 0.0;
       w_coordBip[j] = 0.0;
       const DoubleType axj = vf_exposedAreaVec(ip,j);
@@ -162,26 +165,22 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::execute(
     const DoubleType amag = stk::math::sqrt(asq);
     
     // interpolate to bip
+    DoubleType rhoBip = 0.0;
     DoubleType viscBip = 0.0;
     for ( int ic = 0; ic < BcAlgTraits::nodesPerFace_; ++ic ) {
       const DoubleType r = vf_shape_function_(ip,ic);
       const DoubleType rAdv = vf_adv_shape_function_(ip,ic);
+      rhoBip += r*vf_density(ic);
       viscBip += r*vf_viscosity(ic);
+      DoubleType rhoIc = vf_density(ic);
       for ( int j = 0; j < BcAlgTraits::nDim_; ++j ) {
         w_uspecBip[j] += rAdv*vf_bcVelocity(ic,j);
         w_uBip[j] += rAdv*vf_velocityNp1(ic,j);
         w_coordBip[j] += rAdv*vf_coordinates(ic,j);
+        w_rho_vBip[j] += r*rhoIc*vf_meshVelocity(ic,j);
       }
     }
-    
-    // data at interior opposing face
-    for ( int ic = 0; ic < BcAlgTraits::nodesPerElement_; ++ic ) {
-      const DoubleType r = v_adv_shape_function_(opposingScsIp,ic);
-      for ( int j = 0; j < BcAlgTraits::nDim_; ++j ) {
-        w_uScs[j] += r*v_velocityNp1(ic,j);
-      }
-    }
-    
+        
     // Peclet factor; along the edge is fine  
     DoubleType udotx = 0.0;
     for ( int i = 0; i < BcAlgTraits::nDim_; ++i ) {
@@ -211,12 +210,25 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::execute(
 
     // account for both cases, i.e., leaving or entering to avoid hard loop over SIMD length
     const DoubleType mdotLeaving = stk::math::if_then_else(tmdot > 0, 1.0, 0.0);
-    const DoubleType om_mdotLeaving = 1.0 - mdotLeaving;
-    
+    const DoubleType om_mdotLeaving = 1.0 - mdotLeaving;    
+
+    // entrainment magnitude (must correct for possible mesh motion at the open bc)
+    DoubleType mvc = 0.0;
+    for ( int j = 0; j < BcAlgTraits::nDim_; ++j )
+      mvc += w_rho_vBip[j]*vf_exposedAreaVec(ip,j);
+    const DoubleType uEntrain = tmdot/(rhoBip*amag) + mvc/(rhoBip*amag)*meshVelocityCorrection_;
+
+    // user specified entrainment
+    DoubleType uspecbipnx = 0.0;
+    for ( int j = 0; j < BcAlgTraits::nDim_; ++j ) {
+      const DoubleType nj = w_nx[j];
+      uspecbipnx += w_uspecBip[j]*nj;
+    }
+
     for ( int i = 0; i < BcAlgTraits::nDim_; ++i ) {
-
+      
       const int indexR = nearestNode*BcAlgTraits::nDim_ + i;
-
+      
       //================
       // flow is leaving
       //================
@@ -245,50 +257,16 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::execute(
       //===================
       // flow is extraining
       //===================
-
-      DoubleType ubipnx = 0.0;
-      DoubleType ubipExtrapnx = 0.0;
-      DoubleType uscsnx = 0.0;
-      DoubleType uspecbipnx = 0.0;
-      for ( int j = 0; j < BcAlgTraits::nDim_; ++j ) {
-        const DoubleType nj = w_nx[j];
-        ubipnx += w_uBip[j]*nj;
-        ubipExtrapnx += w_uBipExtrap[j]*nj;
-        uscsnx += w_uScs[j]*nj;
-        uspecbipnx += w_uspecBip[j]*nj;
-      }
-
+      
       const DoubleType nxi = w_nx[i];
-
-      // total advection; with tangeant entrain
-      const DoubleType afluxEntraining =
-          tmdot*(pecfac*ubipExtrapnx+om_pecfac*(nfEntrain_*ubipnx + om_nfEntrain_*uscsnx))*nxi
-          + tmdot*(w_uspecBip[i] - uspecbipnx*nxi);
-
+      
+      // total advection; with normal and tangeant entrainment
+      const DoubleType afluxEntraining = tmdot*uEntrain*nxi
+        + tmdot*(w_uspecBip[i] - uspecbipnx*nxi);
+      
       rhs(indexR) -= afluxEntraining*om_mdotLeaving;
-
-      // upwind and central
-      for ( int j = 0; j < BcAlgTraits::nDim_; ++j ) {
-        const DoubleType nxinxj = nxi*w_nx[j];
-
-        // upwind
-        lhs(indexR,nearestNode*BcAlgTraits::nDim_+j) += tmdot*pecfac*alphaUpw_*nxinxj*om_mdotLeaving;
-
-        // central part; exposed face
-        DoubleType fac = tmdot*(pecfac*om_alphaUpw_+om_pecfac*nfEntrain_)*nxinxj*om_mdotLeaving;
-        for ( int ic = 0; ic < BcAlgTraits::nodesPerFace_; ++ic ) {
-          const int nn = face_node_ordinals[ic];
-          lhs(indexR,nn*BcAlgTraits::nDim_+j) += vf_adv_shape_function_(ip,ic)*fac;
-        }
-
-        // central part; scs face
-        fac = tmdot*om_pecfac*om_nfEntrain_*nxinxj*om_mdotLeaving;
-        for ( int ic = 0; ic < BcAlgTraits::nodesPerElement_; ++ic ) {
-          lhs(indexR,ic*BcAlgTraits::nDim_+j) += v_shape_function_(opposingScsIp,ic)*fac;
-        }
-      }
     }
-
+    
     //================================
     // diffusion second
     //================================
@@ -297,7 +275,7 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::execute(
       for ( int j = 0; j < BcAlgTraits::nDim_; ++j ) {
         
         const DoubleType axj = vf_exposedAreaVec(ip,j);
-        const DoubleType dndxj = v_dndx(ip,ic,j);
+        const DoubleType dndxj = v_dndx_fc_elem(ip,ic,j);
         const DoubleType uxj = v_velocityNp1(ic,j);
         
         const DoubleType divUstress = 2.0/3.0*viscBip*dndxj*uxj*axj*includeDivU_;
@@ -307,7 +285,7 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::execute(
           // matrix entries
           int indexR = nearestNode*BcAlgTraits::nDim_ + i;
           
-          const DoubleType dndxi = v_dndx(ip,ic,i);
+          const DoubleType dndxi = v_dndx_fc_elem(ip,ic,i);
           const DoubleType uxi = v_velocityNp1(ic,i);
           const DoubleType nxi = w_nx[i];
           const DoubleType om_nxinxi = 1.0-nxi*nxi;
@@ -328,7 +306,7 @@ MomentumOpenAdvDiffElemKernel<BcAlgTraits>::execute(
             if ( i != l ) {
               const DoubleType nxinxl = nxi*w_nx[l];
               const DoubleType uxl = v_velocityNp1(ic,l);
-              const DoubleType dndxl = v_dndx(ip,ic,l);
+              const DoubleType dndxl = v_dndx_fc_elem(ip,ic,l);
               
               // +ni*nl*mu*dul/dxj*Aj; sneak in divU (explicit)
               lhsfac = viscBip*dndxj*axj*nxinxl;

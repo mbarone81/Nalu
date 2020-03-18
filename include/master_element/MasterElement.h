@@ -30,6 +30,10 @@ namespace stk {
 namespace sierra{
 namespace nalu{
 
+namespace MEconstants {
+  static const double realmin = std::numeric_limits<double>::min();
+}
+
 namespace Jacobian{
 enum Direction
 {
@@ -41,8 +45,6 @@ enum Direction
 
 struct ElementDescription;
 class MasterElement;
-
-
 
 class MasterElement
 {
@@ -75,7 +77,13 @@ public:
     int face_ordinal,
     SharedMemView<DoubleType**>& coords,
     SharedMemView<DoubleType***>& gradop) {
-    throw std::runtime_error("grad_op using SharedMemView is not implemented");}
+    throw std::runtime_error("face_grad_op using SharedMemView is not implemented");}
+
+  virtual void shifted_face_grad_op(
+    int face_ordinal,
+    SharedMemView<DoubleType**>& coords,
+    SharedMemView<DoubleType***>& gradop) {
+    throw std::runtime_error("shifted_face_grad_op using SharedMemView is not implemented");}
 
   virtual void grad_op_fem(
     SharedMemView<DoubleType**>&coords,
@@ -91,10 +99,29 @@ public:
     SharedMemView<DoubleType*>&det_j) {
     throw std::runtime_error("shifted_grad_op using SharedMemView is not implemented");}
 
+  virtual void face_grad_op_fem(
+    int face_ordinal,
+    SharedMemView<DoubleType**>& coords,
+    SharedMemView<DoubleType***>& gradop,
+    SharedMemView<DoubleType*>&det_j) {
+    throw std::runtime_error("face_grad_op_fem using SharedMemView is not implemented");}
+
   virtual void determinant(
     SharedMemView<DoubleType**>&coords,
     SharedMemView<DoubleType**>&areav) {
     throw std::runtime_error("determinant using SharedMemView is not implemented");}
+
+  virtual void determinant_fem(
+    SharedMemView<DoubleType**>&coords,
+    SharedMemView<DoubleType***>&deriv,
+    SharedMemView<DoubleType*>&det_j) {
+    throw std::runtime_error("determinant_fem using SharedMemView is not implemented");}
+
+  virtual void normal_fem(
+    SharedMemView<DoubleType**>&coords,
+    SharedMemView<DoubleType***>&deriv,
+    SharedMemView<DoubleType**>&normal) {
+    throw std::runtime_error("normal_fem using SharedMemView is not implemented");}
 
   virtual void gij(
     SharedMemView<DoubleType**>& coords,
@@ -170,7 +197,11 @@ public:
      throw std::runtime_error("shifted_face_grad_op not implemented");}
 
   virtual const int * adjacentNodes() {
-    throw std::runtime_error("adjacentNodes not implementedunknown bc");
+    throw std::runtime_error("adjacentNodes not implemented");
+    return NULL;}
+
+  virtual const int * scsIpEdgeOrd() {
+    throw std::runtime_error("scsIpEdgeOrd not implemented");
     return NULL;}
 
   virtual const int * ipNodeMap(int ordinal = 0) {
@@ -187,7 +218,7 @@ public:
 
   virtual int opposingNodes(
     const int ordinal, const int node) {
-    throw std::runtime_error("adjacentNodes not implemented"); }
+    throw std::runtime_error("opposingNodes not implemented"); }
 
   virtual int opposingFace(
     const int ordinal, const int node) {
@@ -260,6 +291,7 @@ public:
   std::vector<double> nodeLoc_;
   std::vector<int> sideNodeOrdinals_;
   std::vector<int> sideOffset_;
+  std::vector<int> scsIpEdgeOrd_;
 
   // FEM
   std::vector<double>weights_;
@@ -313,6 +345,11 @@ protected:
     const double *pointCoord,
     double *isoParCoord);
 
+  void general_shape_fcn(
+    const int numIp,
+    const double *isoParCoord,
+    double *shpfc);
+
   virtual void sidePcoords_to_elemPcoords(
     const int & side_ordinal,
     const int & npoints,
@@ -332,7 +369,6 @@ protected:
   int numQuad_;
 
   //quadrature info
-  std::vector<double> gaussAbscissae1D_;
   std::vector<double> gaussAbscissae_;
   std::vector<double> gaussAbscissaeShift_;
   std::vector<double> gaussWeight_;

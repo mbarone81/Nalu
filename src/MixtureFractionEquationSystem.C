@@ -1,3 +1,4 @@
+
 /*------------------------------------------------------------------------*/
 /*  Copyright 2014 Sandia Corporation.                                    */
 /*  This software is released under the license detailed                  */
@@ -6,71 +7,74 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <MixtureFractionEquationSystem.h>
-#include <AlgorithmDriver.h>
-#include <AssembleScalarEdgeOpenSolverAlgorithm.h>
-#include <AssembleScalarEdgeSolverAlgorithm.h>
-#include <AssembleScalarElemSolverAlgorithm.h>
-#include <AssembleScalarElemOpenSolverAlgorithm.h>
-#include <AssembleScalarNonConformalSolverAlgorithm.h>
-#include <AssembleNodalGradAlgorithmDriver.h>
-#include <AssembleNodalGradEdgeAlgorithm.h>
-#include <AssembleNodalGradElemAlgorithm.h>
-#include <AssembleNodalGradBoundaryAlgorithm.h>
-#include <AssembleNodalGradNonConformalAlgorithm.h>
-#include <AssembleNodeSolverAlgorithm.h>
-#include <AuxFunctionAlgorithm.h>
-#include <ConstantAuxFunction.h>
-#include <CopyFieldAlgorithm.h>
-#include <DirichletBC.h>
-#include <EffectiveDiffFluxCoeffAlgorithm.h>
-#include <EquationSystem.h>
-#include <EquationSystems.h>
-#include <Enums.h>
-#include <FieldFunctions.h>
-#include <LinearSolvers.h>
-#include <LinearSolver.h>
-#include <LinearSystem.h>
-#include <NaluEnv.h>
-#include <NaluParsing.h>
-#include <ProjectedNodalGradientEquationSystem.h>
-#include <Realm.h>
-#include <Realms.h>
-#include <ScalarGclNodeSuppAlg.h>
-#include <ScalarMassBackwardEulerNodeSuppAlg.h>
-#include <ScalarMassBDF2NodeSuppAlg.h>
-#include <Simulation.h>
-#include <SolutionOptions.h>
-#include <TimeIntegrator.h>
-#include <SolverAlgorithmDriver.h>
+#include "MixtureFractionEquationSystem.h"
+#include "AlgorithmDriver.h"
+#include "AssembleScalarEdgeOpenSolverAlgorithm.h"
+#include "AssembleScalarEdgeSolverAlgorithm.h"
+#include "AssembleScalarElemSolverAlgorithm.h"
+#include "AssembleScalarElemOpenSolverAlgorithm.h"
+#include "AssembleScalarNonConformalSolverAlgorithm.h"
+#include "AssembleNodalGradAlgorithmDriver.h"
+#include "AssembleNodalGradEdgeAlgorithm.h"
+#include "AssembleNodalGradElemAlgorithm.h"
+#include "AssembleNodalGradBoundaryAlgorithm.h"
+#include "AssembleNodalGradNonConformalAlgorithm.h"
+#include "AssembleNodeSolverAlgorithm.h"
+#include "AuxFunctionAlgorithm.h"
+#include "ConstantAuxFunction.h"
+#include "CopyFieldAlgorithm.h"
+#include "DirichletBC.h"
+#include "EffectiveDiffFluxCoeffAlgorithm.h"
+#include "EquationSystem.h"
+#include "EquationSystems.h"
+#include "Enums.h"
+#include "FieldFunctions.h"
+#include "LinearSolvers.h"
+#include "LinearSolver.h"
+#include "LinearSystem.h"
+#include "NaluEnv.h"
+#include "NaluParsing.h"
+#include "ProjectedNodalGradientEquationSystem.h"
+#include "Realm.h"
+#include "Realms.h"
+#include "ScalarGclNodeSuppAlg.h"
+#include "ScalarMassBackwardEulerNodeSuppAlg.h"
+#include "ScalarMassBDF2NodeSuppAlg.h"
+#include "Simulation.h"
+#include "SolutionOptions.h"
+#include "TimeIntegrator.h"
+#include "SolverAlgorithmDriver.h"
 
 // template for kernels
-#include <AlgTraits.h>
-#include <kernel/KernelBuilder.h>
-#include <kernel/KernelBuilderLog.h>
+#include "AlgTraits.h"
+#include "kernel/KernelBuilder.h"
+#include "kernel/KernelBuilderLog.h"
 
 // kernels
-#include <AssembleElemSolverAlgorithm.h>
-#include <kernel/ScalarMassElemKernel.h>
-#include <kernel/ScalarAdvDiffElemKernel.h>
-#include <kernel/ScalarUpwAdvDiffElemKernel.h>
+#include "AssembleElemSolverAlgorithm.h"
+#include "kernel/ScalarMassElemKernel.h"
+#include "kernel/ScalarAdvDiffElemKernel.h"
+#include "kernel/ScalarUpwAdvDiffElemKernel.h"
+
+// bc kernels
+#include "kernel/ScalarOpenAdvElemKernel.h"
 
 // deprecated
-#include <ScalarMassElemSuppAlgDep.h>
-#include <nso/ScalarNSOElemSuppAlgDep.h>
+#include "ScalarMassElemSuppAlgDep.h"
+#include "nso/ScalarNSOElemSuppAlgDep.h"
 
 // nso
-#include <nso/ScalarNSOElemKernel.h>
-#include <nso/ScalarNSOKeElemKernel.h>
-#include <nso/ScalarNSOKeElemSuppAlg.h>
+#include "nso/ScalarNSOElemKernel.h"
+#include "nso/ScalarNSOKeElemKernel.h"
+#include "nso/ScalarNSOKeElemSuppAlg.h"
 
 // user function
-#include <user_functions/VariableDensityMixFracSrcElemSuppAlg.h>
-#include <user_functions/VariableDensityMixFracSrcNodeSuppAlg.h>
-#include <user_functions/VariableDensityMixFracAuxFunction.h>
-#include <user_functions/RayleighTaylorMixFracAuxFunction.h>
+#include "user_functions/VariableDensityMixFracSrcElemSuppAlg.h"
+#include "user_functions/VariableDensityMixFracSrcNodeSuppAlg.h"
+#include "user_functions/VariableDensityMixFracAuxFunction.h"
+#include "user_functions/RayleighTaylorMixFracAuxFunction.h"
 
-#include <overset/UpdateOversetFringeAlgorithmDriver.h>
+#include "overset/UpdateOversetFringeAlgorithmDriver.h"
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -93,6 +97,9 @@
 // stk_util
 #include <stk_util/parallel/ParallelReduce.hpp>
 
+// nalu utility
+#include <utils/StkHelpers.h>
+
 namespace sierra{
 namespace nalu{
 
@@ -108,7 +115,7 @@ MixtureFractionEquationSystem::MixtureFractionEquationSystem(
   EquationSystems& eqSystems,
   const bool outputClippingDiag,
   const double deltaZClip)
-  : EquationSystem(eqSystems, "MixtureFractionEQS","mixture_fraction"),
+  : EquationSystem(eqSystems, "MixtureFractionEQS", "mixture_fraction"),
     managePNG_(realm_.get_consistent_mass_matrix_png("mixture_fraction")),
     outputClippingDiag_(outputClippingDiag),
     deltaZClip_(deltaZClip),
@@ -139,7 +146,7 @@ MixtureFractionEquationSystem::MixtureFractionEquationSystem(
   realm_.push_equation_to_systems(this);
 
   // advertise as non uniform
-  realm_.uniformFlow_ = false;
+  realm_.uniform_ = false;
 
   // create projected nodal gradient equation system
   if ( managePNG_ ) {
@@ -180,39 +187,39 @@ MixtureFractionEquationSystem::register_nodal_fields(
 
   // register dof; set it as a restart variable
   mixFrac_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "mixture_fraction", numStates));
-  stk::mesh::put_field(*mixFrac_, *part);
+  stk::mesh::put_field_on_mesh(*mixFrac_, *part, nullptr);
   realm_.augment_restart_variable_list("mixture_fraction");
 
   // for a sanity check, keep around the un-filterd/clipped field
   mixFracUF_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "uf_mixture_fraction", numStates));
-  stk::mesh::put_field(*mixFracUF_, *part);
+  stk::mesh::put_field_on_mesh(*mixFracUF_, *part, nullptr);
  
   dzdx_ =  &(meta_data.declare_field<VectorFieldType>(stk::topology::NODE_RANK, "dzdx"));
-  stk::mesh::put_field(*dzdx_, *part, nDim);
+  stk::mesh::put_field_on_mesh(*dzdx_, *part, nDim, nullptr);
 
   // delta solution for linear solver; share delta since this is a split system
   zTmp_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "pTmp"));
-  stk::mesh::put_field(*zTmp_, *part);
+  stk::mesh::put_field_on_mesh(*zTmp_, *part, nullptr);
 
   visc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "viscosity"));
-  stk::mesh::put_field(*visc_, *part);
+  stk::mesh::put_field_on_mesh(*visc_, *part, nullptr);
 
   if ( realm_.is_turbulent() ) {
     tvisc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity"));
-    stk::mesh::put_field(*tvisc_, *part);
+    stk::mesh::put_field_on_mesh(*tvisc_, *part, nullptr);
   }
 
   evisc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "effective_viscosity_z"));
-  stk::mesh::put_field(*evisc_, *part);
+  stk::mesh::put_field_on_mesh(*evisc_, *part, nullptr);
 
   scalarVar_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "scalar_variance"));
-  stk::mesh::put_field(*scalarVar_, *part);
+  stk::mesh::put_field_on_mesh(*scalarVar_, *part, nullptr);
 
   scaledScalarVar_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "scaled_scalar_variance"));
-  stk::mesh::put_field(*scaledScalarVar_, *part);
+  stk::mesh::put_field_on_mesh(*scaledScalarVar_, *part, nullptr);
 
   scalarDiss_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "scalar_dissipation"));
-  stk::mesh::put_field(*scalarDiss_, *part);
+  stk::mesh::put_field_on_mesh(*scalarDiss_, *part, nullptr);
 
   // make sure all states are properly populated (restart can handle this)
   if ( numStates > 2 && (!realm_.restarted_simulation() || realm_.support_inconsistent_restart()) ) {
@@ -433,16 +440,16 @@ MixtureFractionEquationSystem::register_interior_algorithm(
          realm_.bulk_data(), *realm_.solutionOptions_, mixFrac_, dzdx_, evisc_, 1.0, 1.0, dataPreReqs);
 
       build_topo_kernel_if_requested<ScalarNSOKeElemKernel>
-         (partTopo, *this, activeKernels, "NSO_2ND_KE",
-          realm_.bulk_data(), *realm_.solutionOptions_, mixFrac_, dzdx_, realm_.get_turb_schmidt(mixFrac_->name()), 0.0, dataPreReqs);
-
-       build_topo_kernel_if_requested<ScalarNSOKeElemKernel>
-         (partTopo, *this, activeKernels, "NSO_4TH_KE",
-          realm_.bulk_data(), *realm_.solutionOptions_, mixFrac_, dzdx_, realm_.get_turb_schmidt(mixFrac_->name()), 1.0, dataPreReqs);
-
+        (partTopo, *this, activeKernels, "NSO_2ND_KE",
+         realm_.bulk_data(), *realm_.solutionOptions_, mixFrac_, dzdx_, realm_.get_turb_schmidt(mixFrac_->name()), 0.0, dataPreReqs);
+      
+      build_topo_kernel_if_requested<ScalarNSOKeElemKernel>
+        (partTopo, *this, activeKernels, "NSO_4TH_KE",
+         realm_.bulk_data(), *realm_.solutionOptions_, mixFrac_, dzdx_, realm_.get_turb_schmidt(mixFrac_->name()), 1.0, dataPreReqs);
+      
       report_invalid_supp_alg_names();
       report_built_supp_alg_names();
-   }
+    }
   }
 
   // effective viscosity alg
@@ -481,7 +488,7 @@ MixtureFractionEquationSystem::register_inflow_bc(
 
   // register boundary data; mixFrac_bc
   ScalarFieldType *theBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "mixFrac_bc"));
-  stk::mesh::put_field(*theBcField, *part);
+  stk::mesh::put_field_on_mesh(*theBcField, *part, nullptr);
 
   // extract the value for user specified mixFrac and save off the AuxFunction
   InflowUserData userData = inflowBCData.userData_;
@@ -568,7 +575,7 @@ MixtureFractionEquationSystem::register_inflow_bc(
 void
 MixtureFractionEquationSystem::register_open_bc(
   stk::mesh::Part *part,
-  const stk::topology &/*theTopo*/,
+  const stk::topology &partTopo,
   const OpenBoundaryConditionData &openBCData)
 {
 
@@ -582,7 +589,7 @@ MixtureFractionEquationSystem::register_open_bc(
 
   // register boundary data; mixFrac_bc
   ScalarFieldType *theBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "open_mixFrac_bc"));
-  stk::mesh::put_field(*theBcField, *part);
+  stk::mesh::put_field_on_mesh(*theBcField, *part, nullptr);
 
   // extract the value for user specified mixFrac and save off the AuxFunction
   OpenUserData userData = openBCData.userData_;
@@ -615,22 +622,47 @@ MixtureFractionEquationSystem::register_open_bc(
   }
 
   // now solver contributions; open; lhs
-  std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi
-    = solverAlgDriver_->solverAlgMap_.find(algType);
-  if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
-    SolverAlgorithm *theAlg = NULL;
-    if ( realm_.realmUsesEdges_ ) {
-      theAlg = new AssembleScalarEdgeOpenSolverAlgorithm(realm_, part, this, mixFrac_, theBcField, &dzdxNone, evisc_);
+  if ( realm_.solutionOptions_->useConsolidatedBcSolverAlg_ ) {
+            
+    auto& solverAlgMap = solverAlgDriver_->solverAlgorithmMap_;
+    
+    stk::topology elemTopo = get_elem_topo(realm_, *part);
+    
+    AssembleFaceElemSolverAlgorithm* faceElemSolverAlg = nullptr;
+    bool solverAlgWasBuilt = false;
+    
+    std::tie(faceElemSolverAlg, solverAlgWasBuilt) 
+      = build_or_add_part_to_face_elem_solver_alg(algType, *this, *part, elemTopo, solverAlgMap, "open");
+    
+    auto& activeKernels = faceElemSolverAlg->activeKernels_;
+    
+    if (solverAlgWasBuilt) {
+  
+      build_face_elem_topo_kernel_automatic<ScalarOpenAdvElemKernel>
+        (partTopo, elemTopo, *this, activeKernels, "mixture_fraction_open",
+         realm_.meta_data(), *realm_.solutionOptions_,
+         this, mixFrac_, theBcField, dzdx_, evisc_, 
+         faceElemSolverAlg->faceDataNeeded_, faceElemSolverAlg->elemDataNeeded_);
+      
     }
-    else {
-      theAlg = new AssembleScalarElemOpenSolverAlgorithm(realm_, part, this, mixFrac_, theBcField, &dzdxNone, evisc_);
-    }
-    solverAlgDriver_->solverAlgMap_[algType] = theAlg;
   }
   else {
-    itsi->second->partVec_.push_back(part);
+    std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi
+      = solverAlgDriver_->solverAlgMap_.find(algType);
+    if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
+      SolverAlgorithm *theAlg = NULL;
+      if ( realm_.realmUsesEdges_ ) {
+        theAlg = new AssembleScalarEdgeOpenSolverAlgorithm(realm_, part, this, mixFrac_, theBcField, &dzdxNone, evisc_);
+      }
+      else {
+        theAlg = new AssembleScalarElemOpenSolverAlgorithm(realm_, part, this, mixFrac_, theBcField, &dzdxNone, evisc_);
+      }
+      solverAlgDriver_->solverAlgMap_[algType] = theAlg;
+    }
+    else {
+      itsi->second->partVec_.push_back(part);
+    }
   }
-
 }
 
 //--------------------------------------------------------------------------
@@ -661,7 +693,7 @@ MixtureFractionEquationSystem::register_wall_bc(
 
     // register boundary data; mixFrac_bc
     ScalarFieldType *theBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "mixFrac_bc"));
-    stk::mesh::put_field(*theBcField, *part);
+    stk::mesh::put_field_on_mesh(*theBcField, *part, nullptr);
 
     // extract data
     std::vector<double> userSpec(1);
@@ -817,6 +849,13 @@ MixtureFractionEquationSystem::register_overset_bc()
 
   theAlg->fields_.push_back(
     std::unique_ptr<OversetFieldData>(new OversetFieldData(mixFrac_,1,1)));
+
+  if ( realm_.has_mesh_motion() ) {
+    UpdateOversetFringeAlgorithmDriver* theAlgPost = new UpdateOversetFringeAlgorithmDriver(realm_,false);
+    // Perform fringe updates after all equation system solves (ideally on the post_time_step)
+    equationSystems_.postIterAlgDriver_.push_back(theAlgPost);
+    theAlgPost->fields_.push_back(std::unique_ptr<OversetFieldData>(new OversetFieldData(mixFrac_,1,1)));
+  }
 }
 
 //--------------------------------------------------------------------------
@@ -1092,8 +1131,8 @@ MixtureFractionEquationSystem::manage_projected_nodal_gradient(
       = new ProjectedNodalGradientEquationSystem(eqSystems, EQ_PNG_Z, "dzdx", "qTmp", "mixture_fraction", "PNGradZEQS");
   }
   // fill the map for expected boundary condition names; can be more complex...
-  projectedNodalGradEqs_->set_data_map(INFLOW_BC, "mixture_fraction");
-  projectedNodalGradEqs_->set_data_map(WALL_BC, "mixture_fraction");
+  projectedNodalGradEqs_->set_data_map(INFLOW_BC, "mixFrac_bc");
+  projectedNodalGradEqs_->set_data_map(WALL_BC, "mixture_fraction"); // odd in that it can be strong or weak
   projectedNodalGradEqs_->set_data_map(OPEN_BC, "mixture_fraction");
   projectedNodalGradEqs_->set_data_map(SYMMETRY_BC, "mixture_fraction");
 }

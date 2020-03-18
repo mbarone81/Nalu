@@ -6,43 +6,43 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <MassFractionEquationSystem.h>
-#include <AlgorithmDriver.h>
-#include <AssembleScalarEdgeOpenSolverAlgorithm.h>
-#include <AssembleScalarEdgeSolverAlgorithm.h>
-#include <AssembleScalarElemSolverAlgorithm.h>
-#include <AssembleScalarElemOpenSolverAlgorithm.h>
-#include <AssembleScalarNonConformalSolverAlgorithm.h>
-#include <AssembleNodalGradAlgorithmDriver.h>
-#include <AssembleNodalGradEdgeAlgorithm.h>
-#include <AssembleNodalGradElemAlgorithm.h>
-#include <AssembleNodalGradBoundaryAlgorithm.h>
-#include <AssembleNodalGradNonConformalAlgorithm.h>
-#include <AssembleNodeSolverAlgorithm.h>
-#include <AuxFunctionAlgorithm.h>
-#include <ConstantAuxFunction.h>
-#include <CopyFieldAlgorithm.h>
-#include <DirichletBC.h>
-#include <EffectiveDiffFluxCoeffAlgorithm.h>
-#include <EquationSystem.h>
-#include <EquationSystems.h>
-#include <Enums.h>
-#include <FieldFunctions.h>
-#include <LinearSolvers.h>
-#include <LinearSolver.h>
-#include <LinearSystem.h>
-#include <master_element/MasterElement.h>
-#include <NaluEnv.h>
-#include <Realm.h>
-#include <Realms.h>
-#include <ScalarMassBackwardEulerNodeSuppAlg.h>
-#include <ScalarMassBDF2NodeSuppAlg.h>
-#include <ScalarMassElemSuppAlgDep.h>
-#include <Simulation.h>
-#include <SolutionOptions.h>
-#include <SolverAlgorithmDriver.h>
+#include "MassFractionEquationSystem.h"
+#include "AlgorithmDriver.h"
+#include "AssembleScalarEdgeOpenSolverAlgorithm.h"
+#include "AssembleScalarEdgeSolverAlgorithm.h"
+#include "AssembleScalarElemSolverAlgorithm.h"
+#include "AssembleScalarElemOpenSolverAlgorithm.h"
+#include "AssembleScalarNonConformalSolverAlgorithm.h"
+#include "AssembleNodalGradAlgorithmDriver.h"
+#include "AssembleNodalGradEdgeAlgorithm.h"
+#include "AssembleNodalGradElemAlgorithm.h"
+#include "AssembleNodalGradBoundaryAlgorithm.h"
+#include "AssembleNodalGradNonConformalAlgorithm.h"
+#include "AssembleNodeSolverAlgorithm.h"
+#include "AuxFunctionAlgorithm.h"
+#include "ConstantAuxFunction.h"
+#include "CopyFieldAlgorithm.h"
+#include "DirichletBC.h"
+#include "EffectiveDiffFluxCoeffAlgorithm.h"
+#include "EquationSystem.h"
+#include "EquationSystems.h"
+#include "Enums.h"
+#include "FieldFunctions.h"
+#include "LinearSolvers.h"
+#include "LinearSolver.h"
+#include "LinearSystem.h"
+#include "master_element/MasterElement.h"
+#include "NaluEnv.h"
+#include "Realm.h"
+#include "Realms.h"
+#include "ScalarMassBackwardEulerNodeSuppAlg.h"
+#include "ScalarMassBDF2NodeSuppAlg.h"
+#include "ScalarMassElemSuppAlgDep.h"
+#include "Simulation.h"
+#include "SolutionOptions.h"
+#include "SolverAlgorithmDriver.h"
 
-#include <overset/UpdateOversetFringeAlgorithmDriver.h>
+#include "overset/UpdateOversetFringeAlgorithmDriver.h"
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -112,7 +112,7 @@ MassFractionEquationSystem::MassFractionEquationSystem(
   realm_.push_equation_to_systems(this);
 
   // advertise as non-uniform
-  realm_.uniformFlow_ = false;
+  realm_.uniform_ = false;
 
   // create projected nodal gradient equation system
   if ( managePNG_ )
@@ -142,29 +142,29 @@ MassFractionEquationSystem::register_nodal_fields(
 
   // register dof; set it as a restart variable
   massFraction_ =  &(meta_data.declare_field<GenericFieldType>(stk::topology::NODE_RANK, "mass_fraction", numStates));
-  stk::mesh::put_field(*massFraction_, *part, numMassFraction_);
+  stk::mesh::put_field_on_mesh(*massFraction_, *part, numMassFraction_, nullptr);
   realm_.augment_restart_variable_list("mass_fraction");
 
   currentMassFraction_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "current_mass_fraction", numStates));
-  stk::mesh::put_field(*currentMassFraction_, *part);
+  stk::mesh::put_field_on_mesh(*currentMassFraction_, *part, nullptr);
 
   // delta solution for linear solver
   yTmp_ =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "yTmp"));
-  stk::mesh::put_field(*yTmp_, *part);
+  stk::mesh::put_field_on_mesh(*yTmp_, *part, nullptr);
 
   dydx_ = &(meta_data.declare_field<VectorFieldType>(stk::topology::NODE_RANK, "dydx"));
-  stk::mesh::put_field(*dydx_, *part, nDim);
+  stk::mesh::put_field_on_mesh(*dydx_, *part, nDim, nullptr);
 
   visc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "viscosity"));
-  stk::mesh::put_field(*visc_, *part);
+  stk::mesh::put_field_on_mesh(*visc_, *part, nullptr);
 
   if ( realm_.is_turbulent() ) {
     tvisc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "turbulent_viscosity"));
-    stk::mesh::put_field(*tvisc_, *part);
+    stk::mesh::put_field_on_mesh(*tvisc_, *part, nullptr);
   }
   
   evisc_ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "effective_viscosity_y"));
-  stk::mesh::put_field(*evisc_, *part);
+  stk::mesh::put_field_on_mesh(*evisc_, *part, nullptr);
 
 }
 
@@ -309,11 +309,11 @@ MassFractionEquationSystem::register_inflow_bc(
 
   // register boundary data; massFraction_bc for all mass fraction number
   GenericFieldType *theBcField = &(meta_data.declare_field<GenericFieldType>(stk::topology::NODE_RANK, "mass_fraction_bc"));
-  stk::mesh::put_field(*theBcField, *part, numMassFraction_);
+  stk::mesh::put_field_on_mesh(*theBcField, *part, numMassFraction_, nullptr);
 
   // register single scalar bc value
   ScalarFieldType *theCurrentBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "current_mass_fraction_bc"));
-  stk::mesh::put_field(*theCurrentBcField, *part);
+  stk::mesh::put_field_on_mesh(*theCurrentBcField, *part, nullptr);
 
   // insert to the set of bcs
   bcMassFractionSet_.insert(std::make_pair(theBcField, theCurrentBcField));
@@ -395,11 +395,11 @@ MassFractionEquationSystem::register_open_bc(
 
   // register boundary data; mass fraction_bc for all speecies number
   GenericFieldType *theBcField = &(meta_data.declare_field<GenericFieldType>(stk::topology::NODE_RANK, "mass_fraction_open_bc"));
-  stk::mesh::put_field(*theBcField, *part, numMassFraction_);
+  stk::mesh::put_field_on_mesh(*theBcField, *part, numMassFraction_, nullptr);
 
   // register single scalar bc value
   ScalarFieldType *theCurrentBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "current_mass_fraction_open_bc"));
-  stk::mesh::put_field(*theCurrentBcField, *part);
+  stk::mesh::put_field_on_mesh(*theCurrentBcField, *part, nullptr);
 
   // insert to the set of bcs
   bcMassFractionSet_.insert(std::make_pair(theBcField, theCurrentBcField));
@@ -476,11 +476,11 @@ MassFractionEquationSystem::register_wall_bc(
 
     // register boundary data; mass fraction_bc for all mass fraction number
     GenericFieldType *theBcField = &(meta_data.declare_field<GenericFieldType>(stk::topology::NODE_RANK, "mass_fraction_bc"));
-    stk::mesh::put_field(*theBcField, *part, numMassFraction_);
+    stk::mesh::put_field_on_mesh(*theBcField, *part, numMassFraction_, nullptr);
 
     // register single scalar bc value
     ScalarFieldType *theCurrentBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "current_mass_fraction_bc"));
-    stk::mesh::put_field(*theCurrentBcField, *part);
+    stk::mesh::put_field_on_mesh(*theCurrentBcField, *part, nullptr);
 
     // insert to the set of bcs
     bcMassFractionSet_.insert(std::make_pair(theBcField, theCurrentBcField));
@@ -628,7 +628,14 @@ MassFractionEquationSystem::register_overset_bc()
   equationSystems_.preIterAlgDriver_.push_back(theAlg);
 
   theAlg->fields_.push_back(
-    std::unique_ptr<OversetFieldData>(new OversetFieldData(currentMassFraction_,1,1)));
+    std::unique_ptr<OversetFieldData>(new OversetFieldData(massFraction_,1,numMassFraction_)));
+
+  if ( realm_.has_mesh_motion() ) {
+    UpdateOversetFringeAlgorithmDriver* theAlgPost = new UpdateOversetFringeAlgorithmDriver(realm_,false);
+    // Perform fringe updates after all equation system solves (ideally on the post_time_step)
+    equationSystems_.postIterAlgDriver_.push_back(theAlgPost);
+    theAlgPost->fields_.push_back(std::unique_ptr<OversetFieldData>(new OversetFieldData(massFraction_,1,numMassFraction_)));
+  }
 }
 
 //--------------------------------------------------------------------------

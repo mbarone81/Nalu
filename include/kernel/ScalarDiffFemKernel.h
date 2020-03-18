@@ -12,17 +12,13 @@
 #include "FieldTypeDef.h"
 
 #include <stk_mesh/base/BulkData.hpp>
-#include <stk_mesh/base/Entity.hpp>
 
 #include <Kokkos_Core.hpp>
-#include <vector>
 
 namespace sierra {
 namespace nalu {
 
 class ElemDataRequests;
-class Hex8FEM;
-class MasterElement;
 class SolutionOptions;
 
 /** CVFEM scalar advection/diffusion kernel
@@ -51,18 +47,16 @@ public:
 private:
   ScalarDiffFemKernel() = delete;
 
-  const stk::mesh::BulkData* bulkData_;
   ScalarFieldType *scalarQ_{nullptr};
   ScalarFieldType *diffFluxCoeff_{nullptr};
   VectorFieldType *coordinates_{nullptr};
 
   // master element
-  Hex8FEM * meFEM_;
-  double *ipWeight_;
   const bool shiftedGradOp_;
   
   /// Shape functions
-  Kokkos::View<DoubleType[AlgTraits::numGp_][AlgTraits::nodesPerElement_]> v_shape_function_ { "v_shape_func" };
+  AlignedViewType<DoubleType[AlgTraits::numGp_]> v_ip_weight_{ "v_ip_weight" };
+  AlignedViewType<DoubleType[AlgTraits::numGp_][AlgTraits::nodesPerElement_]> v_shape_function_ { "v_shape_func" };
 };
 
 }  // nalu

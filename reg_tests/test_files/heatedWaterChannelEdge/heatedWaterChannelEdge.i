@@ -1,7 +1,5 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
 
 linear_solvers:
 
@@ -9,7 +7,7 @@ linear_solvers:
     type: tpetra
     method: gmres
     preconditioner: sgs
-    tolerance: 1e-5
+    tolerance: 1e-6
     max_iterations: 50
     kspace: 50
     output_level: 0
@@ -18,7 +16,7 @@ linear_solvers:
     type: tpetra
     method: gmres
     preconditioner: muelu
-    tolerance: 1e-5
+    tolerance: 1e-6
     max_iterations: 50
     kspace: 50
     output_level: 0
@@ -32,7 +30,7 @@ realms:
 
     equation_systems:
       name: theEqSys
-      max_iterations: 4
+      max_iterations: 10
 
       solver_system_specification:
         velocity: solve_scalar
@@ -117,7 +115,6 @@ realms:
     solution_options:
       name: myOptions
       turbulence_model: wale
-      interp_rhou_together_for_mdot: yes
 
       options:
 
@@ -183,7 +180,6 @@ realms:
 
       output_frequency: 5
 
-      search_method: stk_kdtree
       search_tolerance: 1.0e-3
       search_expansion_factor: 2.0
 

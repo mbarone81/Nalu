@@ -1,7 +1,7 @@
-Simulations:
-  - name: sim1
-    time_integrator: ti_1
-    optimizer: opt1
+Simulation:
+  name: NaluSim
+    
+    
 
 linear_solvers:
 
@@ -95,6 +95,7 @@ realms:
         velocity: [0,0]
         pressure: 0.0
         temperature: 283.16
+        use_total_pressure: yes
 
     - wall_boundary_condition: bc_lower
       target_name: surface_3
@@ -106,6 +107,7 @@ realms:
       target_name: surface_4
       wall_user_data:
         velocity: [0,0]
+        use_wall_function: yes
 
     - wall_boundary_condition: bc_cylinder
       target_name: surface_5
@@ -117,16 +119,14 @@ realms:
     solution_options:
       name: myOptions
       turbulence_model: wale
-      interp_rhou_together_for_mdot: yes
+
+      use_consolidated_solver_algorithm: yes
+      use_consolidated_face_elem_bc_algorithm: yes
 
       options:
 
         - turbulent_prandtl:
             enthalpy: 0.90
-
-        - source_terms:
-            momentum: buoyancy
-            continuity: density_time_derivative
 
         - user_constants:
             gravity: [0.0,-9.81]
@@ -149,6 +149,11 @@ realms:
             velocity: 200.0
             enthalpy: 4.02
 
+        - element_source_terms:
+            momentum: [lumped_momentum_time_derivative, upw_advection_diffusion, buoyancy]
+            continuity: [lumped_density_time_derivative, advection]
+            enthalpy: [lumped_enthalpy_time_derivative, upw_advection_diffusion]
+
     turbulence_averaging:
       time_filter_interval: 100000.0
 
@@ -168,6 +173,9 @@ realms:
 
           compute_tke: yes 
           compute_reynolds_stress: yes
+          compute_dissipation_rate: yes
+          compute_production: yes
+          compute_favre_stress: yes
 
         - name: two
           target_name: surface_5
@@ -198,6 +206,12 @@ realms:
        - resolved_turbulent_ke_ra_one
        - resolved_turbulent_ke_fa_one
        - reynolds_stress
+       - dissipation_rate
+       - dissipation_rate_projected
+       - dissipation_rate_filter
+       - production
+       - production_projected
+       - production_filter
 
     restart:
       restart_data_base_name: heatedWaterChannelElem.rst

@@ -9,14 +9,13 @@
 #define Hex27CVFEM_h
 
 #include <master_element/MasterElement.h>
-#include <master_element/MasterElementUtils.h>
 #include <master_element/MasterElementFunctions.h>
 
 #include <SimdInterface.h>
 #include <Kokkos_Core.hpp>
 #include <AlgTraits.h>
 
-#include <stk_util/environment/ReportHandler.hpp>
+#include <stk_util/util/ReportHandler.hpp>
 
 #include <vector>
 #include <cstdlib>
@@ -106,9 +105,6 @@ public:
     return referenceGradWeights;
   }
 
-
-
-
 protected:
   struct ContourData {
     Jacobian::Direction direction;
@@ -140,6 +136,7 @@ protected:
   virtual void eval_shape_derivs_at_shifted_ips();
 
   void eval_shape_derivs_at_face_ips();
+  void eval_shape_derivs_at_shifted_face_ips();
 
   void set_quadrature_rule();
   void GLLGLL_quadrature_weights();
@@ -168,7 +165,6 @@ protected:
   const int numQuad_;
 
   // quadrature info
-  std::vector<double> gaussAbscissae1D_;
   std::vector<double> gaussAbscissae_;
   std::vector<double> gaussAbscissaeShift_;
   std::vector<double> gaussWeight_;
@@ -181,6 +177,8 @@ protected:
   std::vector<double> shapeDerivs_;
   std::vector<double> shapeDerivsShift_;
   std::vector<double> expFaceShapeDerivs_;
+  std::vector<double> expFaceShapeDerivsShift_;
+
 private:
   void hex27_shape_fcn(
     int npts,
@@ -192,8 +190,8 @@ private:
 // 3D Quad 27 subcontrol volume
 class Hex27SCV : public HexahedralP2Element
 {
-  using InterpWeightType = Kokkos::View<DoubleType[AlgTraits::numScvIp_][AlgTraits::nodesPerElement_]>;
-  using GradWeightType = Kokkos::View<DoubleType[AlgTraits::numScvIp_][AlgTraits::nodesPerElement_][AlgTraits::nDim_]>;
+  using InterpWeightType = AlignedViewType<DoubleType[AlgTraits::numScvIp_][AlgTraits::nodesPerElement_]>;
+  using GradWeightType = AlignedViewType<DoubleType[AlgTraits::numScvIp_][AlgTraits::nodesPerElement_][AlgTraits::nDim_]>;
 
 public:
   Hex27SCV();
@@ -209,6 +207,11 @@ public:
   void determinant(SharedMemView<DoubleType**>& coords, SharedMemView<DoubleType*>& volume) final;
 
   void grad_op(
+    SharedMemView<DoubleType**>&coords,
+    SharedMemView<DoubleType***>&gradop,
+    SharedMemView<DoubleType***>&deriv);
+
+  void shifted_grad_op(
     SharedMemView<DoubleType**>&coords,
     SharedMemView<DoubleType***>&gradop,
     SharedMemView<DoubleType***>&deriv);
@@ -254,9 +257,9 @@ private:
 // 3D Hex 27 subcontrol surface
 class Hex27SCS : public HexahedralP2Element
 {
-  using InterpWeightType = Kokkos::View<DoubleType[AlgTraits::numScsIp_][AlgTraits::nodesPerElement_]>;
-  using GradWeightType = Kokkos::View<DoubleType[AlgTraits::numScsIp_][AlgTraits::nodesPerElement_][AlgTraits::nDim_]>;
-  using ExpGradWeightType = Kokkos::View<DoubleType[6*AlgTraitsQuad9Hex27::numFaceIp_][AlgTraits::nodesPerElement_][AlgTraits::nDim_]>;
+  using InterpWeightType = AlignedViewType<DoubleType[AlgTraits::numScsIp_][AlgTraits::nodesPerElement_]>;
+  using GradWeightType = AlignedViewType<DoubleType[AlgTraits::numScsIp_][AlgTraits::nodesPerElement_][AlgTraits::nDim_]>;
+  using ExpGradWeightType = AlignedViewType<DoubleType[6*AlgTraitsQuad9Hex27::numFaceIp_][AlgTraits::nodesPerElement_][AlgTraits::nDim_]>;
 
 public:
   Hex27SCS();
@@ -291,6 +294,11 @@ public:
     SharedMemView<DoubleType**>& coords,
     SharedMemView<DoubleType***>& gradop) final;
 
+  void shifted_face_grad_op(
+    int face_ordinal,
+    SharedMemView<DoubleType**>& coords,
+    SharedMemView<DoubleType***>& gradop) final;
+
   void determinant(
     const int nelem,
     const double *coords,
@@ -314,6 +322,14 @@ public:
     double * error );
 
   void face_grad_op(
+    const int nelem,
+    const int face_ordinal,
+    const double *coords,
+    double *gradop,
+    double *det_j,
+    double * error );
+
+  void shifted_face_grad_op(
     const int nelem,
     const int face_ordinal,
     const double *coords,
@@ -456,6 +472,7 @@ private:
   GradWeightType shiftedReferenceGradWeights_;
 
   ExpGradWeightType expReferenceGradWeights_;
+  ExpGradWeightType expReferenceGradWeightsShift_;
 
   int ipsPerFace_;
 };
